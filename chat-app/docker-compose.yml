@@ -1,4 +1,30 @@
 services:
+  mongo:
+    image: mongo:7-jammy
+    restart: always
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=chatdb
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongo-init:
+    image: mongo:7-jammy
+    restart: on-failure
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./mongo-init:/scripts
+    entrypoint: ["bash", "/scripts/init-replica.sh"]
+
   api:
     build:
       context: ./backend
@@ -11,6 +37,9 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
+      - DATABASE_URL=mongodb://mongo:27017/chatdb?replicaSet=rs0
+    depends_on:
+      - mongo
 
   web:
     build:
@@ -24,3 +53,6 @@ services:
       - /app/node_modules
     environment:
       - VITE_SOCKET_URL=http://localhost:3000
+
+volumes:
+  mongo_data:

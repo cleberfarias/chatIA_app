@@ -4,17 +4,19 @@
     <div class="chat-header">
       <DSChatHeader
         :name="author || 'Chat'"
-        :online="isConnected"
-        :typing="isTyping"
+        :online="chatStore.isConnected"
+        :typing="chatStore.isTyping"
         @search="() => {}"
         @menu="() => {}"
       />
     </div>
 
     <!-- ÁREA DE MENSAGENS -->
-    <div class="messages-wrapper">
+    <div 
+      ref="containerRef" 
+      class="messages-wrapper"
+    >
       <div 
-        ref="containerRef" 
         class="messages-area"
         :style="{
           padding: spacing.xl,
@@ -23,7 +25,7 @@
         }"
       >
         <div
-          v-for="msg in messages"
+          v-for="msg in chatStore.messages"
           :key="msg.id"
           :class="['mb-2', msg.author === author ? 'd-flex justify-end' : 'd-flex justify-start']"
         >
@@ -80,33 +82,48 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import DSChatHeader from '../design-system/components/DSChatHeader.vue';
 import DSMessageBubble from '../design-system/components/DSMessageBubble.vue';
 import DSChatInput from '../design-system/components/DSChatInput.vue';
-import { useChat } from '../design-system/composables/useChat.ts';
+import { useChatStore } from '../stores/chat';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
 import { colors, spacing } from '../design-system/tokens/index.ts';
 
+const chatStore = useChatStore();
 const author = ref('');
 const text = ref('');
 const showNameDialog = ref(true);
 
-const { messages, isConnected, isTyping, sendMessage } = useChat(
-  import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000'
-);
-
 const { containerRef, scrollToBottom } = useScrollToBottom();
 
+const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+
+// Conecta ao socket e carrega histórico ao montar
+onMounted(async () => {
+  chatStore.connect(socketUrl);
+  try {
+    await chatStore.loadHistory(socketUrl);
+    scrollToBottom();
+  } catch (error) {
+    console.error('Erro ao carregar histórico:', error);
+  }
+});
+
+// Desconecta ao desmontar
+onBeforeUnmount(() => {
+  chatStore.disconnect();
+});
+
 // Auto-scroll quando novas mensagens chegarem (sem smooth para performance)
-watch(() => messages.value.length, () => {
+watch(() => chatStore.messages.length, () => {
   scrollToBottom(); // smooth = false (default)
 });
 
 function handleSendMessage(messageText: string) {
   if (!messageText.trim()) return;
   
-  sendMessage({
+  chatStore.sendMessage({
     author: author.value || 'Anônimo',
     text: messageText,
     type: 'text',
@@ -129,44 +146,56 @@ function closeDialog() {
   height: 100vh;
   width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .chat-header {
   flex-shrink: 0;
   z-index: 10;
+  position: sticky;
+  top: 0;
+  background: inherit;
 }
 
 .messages-wrapper {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
+  padding-bottom: 80px; /* Espaço para o input fixo */
 }
 
 .messages-area {
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-input-wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   flex-shrink: 0;
   z-index: 10;
+  background: inherit;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.messages-area::-webkit-scrollbar {
+.messages-wrapper::-webkit-scrollbar {
   width: 8px;
 }
 
-.messages-area::-webkit-scrollbar-track {
+.messages-wrapper::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.05);
 }
 
-.messages-area::-webkit-scrollbar-thumb {
+.messages-wrapper::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
 }
 
-.messages-area::-webkit-scrollbar-thumb:hover {
+.messages-wrapper::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.3);
 }
 </style>
