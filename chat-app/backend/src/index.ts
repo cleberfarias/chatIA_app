@@ -3,6 +3,7 @@ import http from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import { z } from 'zod'
+import { randomUUID } from 'crypto'
 
 const app = express()
 app.use(cors())
@@ -16,9 +17,11 @@ const io = new Server(server, {
 })
 
 const MessageSchema = z.object({
+  id: z.string().optional(),
   author: z.string().min(1),
   text: z.string().min(1),
-  timestamp: z.number().optional()
+  timestamp: z.number().optional(),
+  status: z.enum(['sent', 'delivered', 'read']).optional(),
 })
 
 io.on('connection', (socket) => {
@@ -26,8 +29,22 @@ io.on('connection', (socket) => {
 
   socket.on('chat:new-message', (payload) => {
     const parsed = MessageSchema.safeParse(payload)
-    if (!parsed.success) return
-    io.emit('chat:new-message', parsed.data)
+    if (!parsed.success) {
+      console.log('❌ Mensagem inválida:', parsed.error)
+      return
+    }
+    
+    // Garante que a mensagem tenha ID e timestamp
+    const message = {
+      ...parsed.data,
+      id: parsed.data.id || randomUUID(),
+      timestamp: parsed.data.timestamp || Date.now(),
+    }
+    
+    console.log('📨 Mensagem processada:', message)
+    
+    // Envia para todos os clientes conectados
+    io.emit('chat:new-message', message)
   })
 
   socket.on('disconnect', () => {

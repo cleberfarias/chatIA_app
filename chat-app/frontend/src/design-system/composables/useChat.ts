@@ -25,7 +25,19 @@ export function useChat(socketUrl: string) {
 
     socket.on('chat:new-message', (msg: Message) => {
       console.log('📨 Nova mensagem recebida:', msg);
-      messages.value.push(msg);
+      
+      // Garante que a mensagem tenha um ID único
+      const messageWithId: Message = {
+        ...msg,
+        id: msg.id || crypto.randomUUID(),
+        timestamp: msg.timestamp || Date.now(),
+      };
+      
+      // Evita duplicação: só adiciona se a mensagem não existir
+      const exists = messages.value.some(m => m.id === messageWithId.id);
+      if (!exists) {
+        messages.value.push(messageWithId);
+      }
     });
 
     socket.on('user:typing', (data: { userId: string; isTyping: boolean }) => {
@@ -46,7 +58,9 @@ export function useChat(socketUrl: string) {
     
     console.log('📤 Enviando mensagem:', msg);
     socket?.emit('chat:new-message', msg);
-    messages.value.push(msg);
+    
+    // Não adiciona localmente - vai receber de volta pelo socket
+    // Isso evita duplicação e garante que a mensagem foi processada pelo servidor
   }
 
   function sendTypingStatus(typing: boolean) {
