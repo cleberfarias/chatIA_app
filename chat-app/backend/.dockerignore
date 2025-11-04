@@ -5,3 +5,4 @@ dist
 .gitignore
 README.md
 .env
+.prisma/
