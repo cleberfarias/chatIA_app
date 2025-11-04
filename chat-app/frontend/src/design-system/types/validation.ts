@@ -5,7 +5,7 @@ import { z } from 'zod';
  * Garante que todas as mensagens tenham os campos obrigatórios
  */
 export const MessageSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1, 'ID é obrigatório'),
   author: z.string().min(1, 'Autor é obrigatório'),
   text: z.string().min(1, 'Texto é obrigatório'),
   timestamp: z.number().positive('Timestamp inválido'),
