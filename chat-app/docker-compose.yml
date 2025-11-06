@@ -29,14 +29,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: npm run dev
     ports:
       - "3000:3000"
     volumes:
       - ./backend:/app
-      - /app/node_modules
     environment:
-      - NODE_ENV=development
       - DATABASE_URL=mongodb://mongo:27017/chatdb?replicaSet=rs0
     depends_on:
       - mongo

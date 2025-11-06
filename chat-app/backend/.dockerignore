@@ -1,8 +1,10 @@
-node_modules
-npm-debug.log
-dist
-.git
-.gitignore
-README.md
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
 .env
-.prisma/
+.venv

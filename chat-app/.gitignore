@@ -45,3 +45,6 @@ coverage/
 .cache/
 temp/
 tmp/
+
+# Backup folders
+backend-nodejs-backup/
