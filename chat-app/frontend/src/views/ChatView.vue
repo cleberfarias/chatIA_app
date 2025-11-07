@@ -7,7 +7,7 @@
         :online="chatStore.isConnected"
         :typing="chatStore.isTyping"
         @search="() => {}"
-        @menu="() => {}"
+        @menu="handleLogout"
       />
     </div>
 
@@ -83,14 +83,18 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter } from 'vue-router';
 import DSChatHeader from '../design-system/components/DSChatHeader.vue';
 import DSMessageBubble from '../design-system/components/DSMessageBubble.vue';
 import DSChatInput from '../design-system/components/DSChatInput.vue';
 import { useChatStore } from '../stores/chat';
+import { useAuthStore } from '../stores/auth';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
 import { colors, spacing } from '../design-system/tokens/index.ts';
 
+const router = useRouter();
 const chatStore = useChatStore();
+const authStore = useAuthStore();
 const author = ref('');
 const text = ref('');
 const showNameDialog = ref(true);
@@ -98,6 +102,12 @@ const showNameDialog = ref(true);
 const { containerRef, scrollToBottom } = useScrollToBottom();
 
 const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+
+// Define o nome do autor baseado no usuário autenticado
+if (authStore.user) {
+  author.value = authStore.user.name;
+  showNameDialog.value = false;
+}
 
 // Conecta ao socket e carrega histórico ao montar
 onMounted(async () => {
@@ -123,12 +133,10 @@ watch(() => chatStore.messages.length, () => {
 function handleSendMessage(messageText: string) {
   if (!messageText.trim()) return;
   
-  chatStore.sendMessage({
-    author: author.value || 'Anônimo',
-    text: messageText,
-    type: 'text',
-    status: 'sent',
-  });
+  chatStore.sendMessage(
+    author.value || 'Anônimo',
+    messageText
+  );
   scrollToBottom(true); // smooth = true (interação do usuário)
 }
 
@@ -136,6 +144,12 @@ function closeDialog() {
   if (author.value.trim()) {
     showNameDialog.value = false;
   }
+}
+
+function handleLogout() {
+  chatStore.disconnect();
+  authStore.logout();
+  router.push('/login');
 }
 </script>
 

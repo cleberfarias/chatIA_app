@@ -1,116 +1,64 @@
+// frontend/src/stores/chat.ts
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import type { Message } from '../design-system/types'
 import { validateAndNormalizeMessage } from '../design-system/types/validation'
+import { useAuthStore } from './auth'
 
 export const useChatStore = defineStore('chat', () => {
-    const messages = ref<Message[]>([])
-    const isConnected = ref(false)
-    const isTyping = ref(false)
-    const isLoading = ref(false)
-    let socket: Socket | null = null
+  const messages = ref<Message[]>([])
+  const isConnected = ref(false)
+  const isTyping = ref(false)
+  const isLoading = ref(false)
+  let socket: Socket | null = null
+  let baseUrl: string | null = null
 
-    function connect(baseUrl: string) {
-      if (socket) return
-      socket = io(baseUrl, { transports: ['websocket'] })
-      
-      socket.on('connect', () => { 
-        isConnected.value = true 
-        console.log('✅ Conectado ao servidor')
-      })
-      
-      socket.on('disconnect', () => { 
-        isConnected.value = false 
-        console.log('❌ Desconectado do servidor')
-      })
-      
-      socket.on('chat:new-message', (data: unknown) => {
-        try {
-          const message = validateAndNormalizeMessage(data)
-          console.log('📨 Mensagem válida recebida:', message)
-          
-          // Evita duplicação
-          const exists = messages.value.some(m => m.id === message.id)
-          if (!exists) {
-            messages.value.push(message)
-          } else {
-            console.log('⚠️  Mensagem duplicada ignorada:', message.id)
-          }
-        } catch (error) {
-          console.error('❌ Erro ao processar mensagem:', error)
-        }
-      })
+  function connect(base: string) {
+    if (socket) return
+    baseUrl = base
+    const auth = useAuthStore()
+    const token = auth.token
+    socket = io(base, {
+      transports: ['websocket'],
+      auth: { token: token || '' }
+    })
+    socket.on('connect', () => { isConnected.value = true })
+    socket.on('disconnect', () => { isConnected.value = false })
+    socket.on('chat:new-message', (msg: Message) => { messages.value.push(msg) })
+    socket.on('error', (e: any) => { console.warn('socket error', e) })
+  }
 
-      socket.on('user:typing', (data: { userId: string; isTyping: boolean }) => {
-        isTyping.value = data.isTyping
-      })
+  function disconnect() {
+    socket?.disconnect()
+    socket = null
+    isConnected.value = false
+  }
+
+  async function loadHistory(base: string, limit = 50) {
+    isLoading.value = true
+    try {
+      const res = await fetch(`${base}/messages?limit=${limit}`)
+      const data: Message[] = await res.json()
+      messages.value = data
+    } finally {
+      isLoading.value = false
     }
+  }
 
-    async function loadHistory(baseUrl: string, limit = 50) {
-      isLoading.value = true
-      try {
-        const res = await fetch(`${baseUrl}/messages?limit=${limit}`)
-        if (!res.ok) throw new Error('Falha ao buscar histórico')
-        
-        const data: unknown[] = await res.json()
-        console.log('📚 Histórico carregado:', data.length, 'mensagens')
+  function sendMessage(author: string, text: string) {
+    if (!socket) return
+    const payload = validateAndNormalizeMessage({ author, text })
+    socket.emit('chat:send', payload)
+  }
 
-        // Valida todas as mensagens
-        const validMessages = data
-          .map((msg) => {
-            try {
-              return validateAndNormalizeMessage(msg)
-            } catch (error) {
-              console.error('❌ Mensagem inválida no histórico:', error)
-              return null
-            }
-          })
-          .filter((msg): msg is Message => msg !== null)
+  function sendTypingStatus(value: boolean) {
+    isTyping.value = !!value
+   
+  }
 
-        messages.value = validMessages
-      } catch (error) {
-        console.error('❌ Erro ao buscar histórico:', error)
-        throw error
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    function sendMessage(message: Omit<Message, 'id' | 'timestamp'>) {
-      if (!socket) return
-      
-      const msg: Message = {
-        ...message,
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-      }
-      
-      console.log('📤 Enviando mensagem:', msg)
-      socket.emit('chat:send', msg)
-    }
-
-    function sendTypingStatus(typing: boolean) {
-      if (!socket) return
-      socket.emit('user:typing', typing)
-    }
-
-    function disconnect() {
-      if (!socket) return
-      socket.disconnect()
-      socket = null
-      isConnected.value = false
-    }
-
-    return {
-      messages,
-      isConnected,
-      isTyping,
-      isLoading,
-      connect,
-      disconnect,
-      sendMessage,
-      sendTypingStatus,
-      loadHistory,
-    }
+  return {
+    messages, isConnected, isTyping, isLoading,
+    connect, disconnect, loadHistory, sendMessage, sendTypingStatus
+  }
 })
