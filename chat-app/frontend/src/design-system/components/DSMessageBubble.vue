@@ -8,7 +8,7 @@
       <slot />
     </div>
     
-    <div class="ds-message-footer">
+    <div v-if="showTimestamp" class="ds-message-footer">
       <span class="ds-message-time">{{ formattedTime }}</span>
       <v-icon 
         v-if="variant === 'sent' && status" 
@@ -29,11 +29,14 @@ interface Props {
   author?: string;
   timestamp: number;
   variant: 'sent' | 'received';
-  status?: 'sent' | 'delivered' | 'read';
+  status?: 'pending' | 'sent' | 'delivered' | 'read'; // 🔧 Adicionado 'pending'
   showAuthor?: boolean;
+  showTimestamp?: boolean; // 🆕 Controla exibição do timestamp
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  showTimestamp: true,
+});
 
 const formattedTime = computed(() => {
   const date = new Date(props.timestamp);
@@ -42,15 +45,20 @@ const formattedTime = computed(() => {
 
 const statusIcon = computed(() => {
   switch (props.status) {
-    case 'sent': return 'mdi-check';
-    case 'delivered': return 'mdi-check-all';
-    case 'read': return 'mdi-check-all';
+    case 'pending': return 'mdi-clock-outline'; // ⏳ Enviando...
+    case 'sent': return 'mdi-check'; // ✓ Enviado
+    case 'delivered': return 'mdi-check-all'; // ✓✓ Entregue
+    case 'read': return 'mdi-check-all'; // ✓✓ Lido (azul)
     default: return 'mdi-clock-outline';
   }
 });
 
 const statusColor = computed(() => {
-  return props.status === 'read' ? 'blue-lighten-1' : 'grey';
+  switch (props.status) {
+    case 'pending': return 'grey-lighten-1';
+    case 'read': return 'blue';
+    default: return 'grey';
+  }
 });
 </script>
 

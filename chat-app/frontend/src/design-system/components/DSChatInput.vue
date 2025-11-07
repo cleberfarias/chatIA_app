@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { colors } from '../tokens';
 
 interface Props {
@@ -58,6 +58,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'submit': [text: string];
+  'typing': [isTyping: boolean]; // 🆕 Evento de digitação
   'emoji': [];
   'attach': [];
   'voice': [];
@@ -65,8 +66,51 @@ const emit = defineEmits<{
 
 const hasText = computed(() => props.modelValue.trim().length > 0);
 
+// 🆕 Debounce para evento de digitação
+const typingTimeout = ref<number | null>(null);
+const isTyping = ref(false);
+
+watch(() => props.modelValue, (newValue) => {
+  // Usuário começou a digitar
+  if (newValue && !isTyping.value) {
+    isTyping.value = true;
+    emit('typing', true);
+  }
+  
+  // Limpa timeout anterior
+  if (typingTimeout.value) {
+    clearTimeout(typingTimeout.value);
+  }
+  
+  // Define novo timeout de 1s (usuário parou de digitar)
+  typingTimeout.value = setTimeout(() => {
+    if (isTyping.value) {
+      isTyping.value = false;
+      emit('typing', false);
+    }
+  }, 1000);
+  
+  // Se apagou tudo, emite imediatamente
+  if (!newValue && isTyping.value) {
+    isTyping.value = false;
+    emit('typing', false);
+    if (typingTimeout.value) {
+      clearTimeout(typingTimeout.value);
+    }
+  }
+});
+
 function handleSubmit() {
   if (hasText.value) {
+    // Para o indicador de digitação
+    if (isTyping.value) {
+      isTyping.value = false;
+      emit('typing', false);
+    }
+    if (typingTimeout.value) {
+      clearTimeout(typingTimeout.value);
+    }
+    
     emit('submit', props.modelValue);
     // Limpa o campo após enviar
     emit('update:modelValue', '');
