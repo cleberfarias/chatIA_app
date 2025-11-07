@@ -26,6 +26,14 @@ sio = socketio.AsyncServer(
     engineio_logger=True
 )
 
+# Importa e registra rotas de autenticação (se existir o arquivo users.py)
+try:
+    from users import router as auth_router
+    app.include_router(auth_router)
+    print("✅ Rotas de autenticação carregadas")
+except ImportError:
+    print("⚠️  Arquivo users.py não encontrado - autenticação não disponível")
+
 # Wrap com Socket.IO
 socket_app = socketio.ASGIApp(sio, app)
 
@@ -57,8 +65,29 @@ async def get_messages(limit: int = 50):
 
 
 @sio.event
-async def connect(sid, environ):
-    print(f"🔌 Cliente conectado: {sid}")
+async def connect(sid, environ, auth):
+    """Autentica cliente via token JWT antes de permitir conexão"""
+    print(f"🔌 Tentativa de conexão: {sid}")
+    
+    # Cliente envia { auth: { token } }
+    token = (auth or {}).get("token")
+    if not token:
+        print(f"❌ Conexão rejeitada: sem token - {sid}")
+        return False
+    
+    try:
+        # Importa decode_token apenas se necessário
+        from auth import decode_token
+        payload = decode_token(token)
+        
+        # Armazena userId no ambiente do socket
+        environ["user_id"] = payload["sub"]
+        print(f"✅ Socket autenticado: {payload['sub']} (sid: {sid})")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Token inválido: {e} - {sid}")
+        return False
 
 
 @sio.event
@@ -72,6 +101,10 @@ async def handle_chat_send(sid, data):
     try:
         print(f"📨 Mensagem recebida de {sid}: {data}")
         
+        # Pega o user_id do ambiente (se disponível)
+        environ = sio.get_environ(sid)
+        user_id = environ.get("user_id", "anonymous")
+        
         # Validação com Pydantic
         message_create = MessageCreate(**data)
         
@@ -81,12 +114,13 @@ async def handle_chat_send(sid, data):
             "text": message_create.text,
             "status": message_create.status,
             "type": message_create.type,
+            "userId": user_id,  # Adiciona ID do usuário autenticado
             "createdAt": datetime.utcnow()
         }
         
         # Insere no MongoDB
         result = await messages_collection.insert_one(doc)
-        print(f"💾 Mensagem salva no MongoDB: {result.inserted_id}")
+        print(f"💾 Mensagem salva no MongoDB: {result.inserted_id} (user: {user_id})")
         
         # Prepara resposta
         response = MessageResponse(
@@ -105,8 +139,3 @@ async def handle_chat_send(sid, data):
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {e}")
         await sio.emit("error", {"message": str(e)}, room=sid)
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=3000, log_level="info")

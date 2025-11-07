@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import { useAuthStore } from './stores/auth'
 
 // Vuetify
 import 'vuetify/styles'
@@ -12,6 +13,7 @@ import '@mdi/font/css/materialdesignicons.css'
 
 // Views
 import ChatView from './views/ChatView.vue';
+import LoginView from './views/LoginView.vue';
 
 const vuetify = createVuetify({
   components,
@@ -23,7 +25,36 @@ const vuetify = createVuetify({
 const pinia = createPinia()
 const router = createRouter({
   history: createWebHistory(),
-  routes: [{ path: '/', component: ChatView }]
+  routes: [
+    { 
+      path: '/', 
+      component: ChatView,
+      meta: { requiresAuth: true }
+    },
+    { 
+      path: '/login', 
+      component: LoginView 
+    }
+  ]
 })
 
-createApp(App).use(pinia).use(router).use(vuetify).mount('#app')
+// Guarda de rota para autenticação
+router.beforeEach((to, _from, next) => {
+  const authStore = useAuthStore()
+  authStore.load() // Garante que o token está carregado
+  
+  if (to.meta.requiresAuth && !authStore.token) {
+    next('/login')
+  } else if (to.path === '/login' && authStore.token) {
+    next('/')
+  } else {
+    next()
+  }
+})
+
+const app = createApp(App)
+app.use(pinia)
+app.use(router)
+app.use(vuetify)
+
+app.mount('#app')
