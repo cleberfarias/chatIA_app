@@ -4,8 +4,8 @@
     <div class="chat-header">
       <DSChatHeader
         :name="author || 'Chat'"
-        :online="chatStore.isConnected"
-        :typing="chatStore.isTyping"
+        :online="chatStore.connected"
+        :typing="Object.keys(chatStore.isTyping).length > 0"
         @search="() => {}"
         @menu="handleLogout"
       />
@@ -15,7 +15,21 @@
     <div 
       ref="containerRef" 
       class="messages-wrapper"
+      @scroll="handleScroll"
     >
+      <!-- 🆕 BOTÃO "CARREGAR MAIS" (Topo) -->
+      <div v-if="chatStore.hasMoreMessages" class="d-flex justify-center pa-2">
+        <v-btn
+          :loading="chatStore.loadingMore"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-chevron-up"
+          @click="loadMoreMessages"
+        >
+          Carregar mais
+        </v-btn>
+      </div>
+
       <div 
         class="messages-area"
         :style="{
@@ -24,22 +38,50 @@
           backgroundRepeat: 'repeat',
         }"
       >
-        <div
-          v-for="msg in chatStore.messages"
-          :key="msg.id"
-          :class="['mb-2', msg.author === author ? 'd-flex justify-end' : 'd-flex justify-start']"
-        >
-          <DSMessageBubble
-            :author="msg.author"
-            :timestamp="msg.timestamp"
-            :variant="msg.author === author ? 'sent' : 'received'"
-            :status="msg.status"
-            :show-author="msg.author !== author"
+        <!-- 🆕 SEPARADORES DE DATA + MENSAGENS AGRUPADAS -->
+        <template v-for="(item, index) in groupedMessages" :key="item.id || index">
+          <!-- Separador de Data -->
+          <DateSeparator v-if="item.type === 'date'" :date="item.date" />
+          
+          <!-- Mensagem -->
+          <div
+            v-else
+            :class="['mb-2', item.author === author ? 'd-flex justify-end' : 'd-flex justify-start']"
           >
-            {{ msg.text }}
-          </DSMessageBubble>
-        </div>
+            <DSMessageBubble
+              :author="item.author"
+              :timestamp="item.timestamp"
+              :variant="item.author === author ? 'sent' : 'received'"
+              :status="item.status"
+              :show-author="item.showAuthor"
+              :show-timestamp="item.showTimestamp"
+            >
+              {{ item.text }}
+            </DSMessageBubble>
+          </div>
+        </template>
+
+        <!-- 🆕 INDICADOR "DIGITANDO..." -->
+        <TypingIndicator v-if="chatStore.typingUsers.length > 0" :users="chatStore.typingUsers" />
       </div>
+
+      <!-- 🆕 BOTÃO "NOVAS MENSAGENS" (Flutuante) -->
+      <v-fab
+        v-if="chatStore.hasUnreadMessages && !isScrolledToBottom"
+        class="new-messages-fab"
+        icon="mdi-chevron-down"
+        color="primary"
+        size="small"
+        @click="scrollToBottom(true)"
+      >
+        <v-badge
+          v-if="unreadCount > 0"
+          :content="unreadCount"
+          color="error"
+          offset-x="-8"
+          offset-y="-8"
+        />
+      </v-fab>
     </div>
 
     <!-- INPUT DE MENSAGEM -->
@@ -47,6 +89,7 @@
       <DSChatInput
         v-model="text"
         @submit="handleSendMessage"
+        @typing="handleTyping"
         @emoji="() => {}"
         @attach="() => {}"
       />
@@ -82,11 +125,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import DSChatHeader from '../design-system/components/DSChatHeader.vue';
 import DSMessageBubble from '../design-system/components/DSMessageBubble.vue';
 import DSChatInput from '../design-system/components/DSChatInput.vue';
+import TypingIndicator from '../components/TypingIndicator.vue';
+import DateSeparator from '../components/DateSeparator.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
@@ -98,10 +143,10 @@ const authStore = useAuthStore();
 const author = ref('');
 const text = ref('');
 const showNameDialog = ref(true);
+const isScrolledToBottom = ref(true);
+const lastScrollTop = ref(0);
 
 const { containerRef, scrollToBottom } = useScrollToBottom();
-
-const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 
 // Define o nome do autor baseado no usuário autenticado
 if (authStore.user) {
@@ -109,14 +154,61 @@ if (authStore.user) {
   showNameDialog.value = false;
 }
 
+// 🆕 COMPUTED: Agrupa mensagens por data e autor
+const groupedMessages = computed(() => {
+  const result: any[] = [];
+  let lastDate: string | null = null;
+  let lastAuthor: string | null = null;
+  let lastTimestamp = 0;
+  const TIME_GAP = 5 * 60 * 1000; // 5 minutos
+
+  chatStore.messages.forEach((msg, index) => {
+    const msgDate = new Date(msg.timestamp);
+    const dateKey = msgDate.toLocaleDateString('pt-BR');
+
+    // Adiciona separador de data
+    if (dateKey !== lastDate) {
+      result.push({ type: 'date', date: msgDate, id: `date-${dateKey}` });
+      lastDate = dateKey;
+      lastAuthor = null;
+    }
+
+    // Verifica se deve agrupar (mesmo autor + menos de 5min)
+    const timeDiff = msg.timestamp - lastTimestamp;
+    const shouldGroup = msg.author === lastAuthor && timeDiff < TIME_GAP;
+
+    result.push({
+      ...msg,
+      type: 'message',
+      showAuthor: !shouldGroup || msg.author !== author.value,
+      showTimestamp: !shouldGroup || index === chatStore.messages.length - 1,
+    });
+
+    lastAuthor = msg.author;
+    lastTimestamp = msg.timestamp;
+  });
+
+  return result;
+});
+
+// 🆕 COMPUTED: Conta mensagens não lidas
+const unreadCount = computed(() => {
+  return chatStore.messages.filter(m => 
+    m.author !== author.value && m.status !== 'read'
+  ).length;
+});
+
 // Conecta ao socket e carrega histórico ao montar
 onMounted(async () => {
-  chatStore.connect(socketUrl);
-  try {
-    await chatStore.loadHistory(socketUrl);
+  // Define o nome do usuário no store
+  if (author.value) {
+    chatStore.currentUser = author.value;
+  }
+  
+  // Conecta ao socket (já carrega mensagens internamente)
+  if (authStore.token) {
+    await chatStore.connect(authStore.token);
     scrollToBottom();
-  } catch (error) {
-    console.error('Erro ao carregar histórico:', error);
   }
 });
 
@@ -125,18 +217,62 @@ onBeforeUnmount(() => {
   chatStore.disconnect();
 });
 
-// Auto-scroll quando novas mensagens chegarem (sem smooth para performance)
+// 🆕 Auto-scroll INTELIGENTE (só rola se usuário estava no final)
 watch(() => chatStore.messages.length, () => {
-  scrollToBottom(); // smooth = false (default)
+  if (isScrolledToBottom.value) {
+    scrollToBottom(); // smooth = false (default)
+  }
 });
+
+// 🆕 FUNÇÃO: Detecta scroll manual do usuário
+function handleScroll(event: Event) {
+  const container = event.target as HTMLElement;
+  const threshold = 100; // 100px de tolerância
+  
+  const atBottom = 
+    container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  
+  isScrolledToBottom.value = atBottom;
+  chatStore.setScrolledToBottom(atBottom);
+  
+  lastScrollTop.value = container.scrollTop;
+}
+
+// 🆕 FUNÇÃO: Carregar mensagens antigas
+async function loadMoreMessages() {
+  if (chatStore.loadingMore || !chatStore.hasMoreMessages) return;
+  
+  const oldestMessage = chatStore.messages[0];
+  if (oldestMessage) {
+    const scrollHeightBefore = containerRef.value?.scrollHeight || 0;
+    
+    await chatStore.loadMessages(oldestMessage.timestamp);
+    
+    // Mantém posição do scroll após carregar
+    setTimeout(() => {
+      if (containerRef.value) {
+        const scrollHeightAfter = containerRef.value.scrollHeight;
+        containerRef.value.scrollTop = scrollHeightAfter - scrollHeightBefore;
+      }
+    }, 0);
+  }
+}
+
+// 🆕 FUNÇÃO: Emite evento de digitação para o servidor
+function handleTyping(isTyping: boolean) {
+  chatStore.emitTyping(isTyping);
+}
 
 function handleSendMessage(messageText: string) {
   if (!messageText.trim()) return;
   
-  chatStore.sendMessage(
-    author.value || 'Anônimo',
-    messageText
-  );
+  // Define o nome do usuário antes de enviar
+  if (author.value) {
+    chatStore.currentUser = author.value;
+  }
+  
+  chatStore.sendMessage(messageText);
+  text.value = ''; // Limpa o input
   scrollToBottom(true); // smooth = true (interação do usuário)
 }
 
@@ -211,5 +347,14 @@ function handleLogout() {
 
 .messages-wrapper::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.3);
+}
+
+/* 🆕 Botão flutuante "Novas Mensagens" */
+.new-messages-fab {
+  position: absolute !important;
+  bottom: 100px;
+  right: 20px;
+  z-index: 5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 </style>
