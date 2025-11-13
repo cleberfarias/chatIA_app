@@ -10,8 +10,10 @@
 2. [Backend (Python/FastAPI)](#backend-pythonfastapi)
 3. [Frontend (Vue 3/TypeScript)](#frontend-vue-3typescript)
 4. [Database (MongoDB)](#database-mongodb)
-5. [Features Implementadas](#features-implementadas)
-6. [Fluxos de Dados](#fluxos-de-dados)
+5. [Storage (MinIO/S3)](#storage-minios3)
+6. [Design System Responsivo](#design-system-responsivo)
+7. [Features Implementadas](#features-implementadas)
+8. [Fluxos de Dados](#fluxos-de-dados)
 
 ---
 
@@ -23,23 +25,25 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                        CLIENTE                               │
 │  Vue 3 + TypeScript + Vuetify + Socket.IO Client + Pinia   │
+│  AttachmentMenu + Breakpoints + Upload Progress            │
 │                     (porta 5173)                            │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-                  │ HTTP/WebSocket (Socket.IO)
-                  │
-┌─────────────────▼───────────────────────────────────────────┐
-│                        SERVIDOR                              │
-│   FastAPI + python-socketio + Uvicorn + PyJWT              │
-│                     (porta 3000)                            │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-                  │ Motor (async driver)
-                  │
-┌─────────────────▼───────────────────────────────────────────┐
-│                        DATABASE                              │
-│          MongoDB 7.0 com Replica Set (rs0)                  │
-│                     (porta 27017)                           │
+└─────────────┬──────────────────────┬────────────────────────┘
+              │                      │
+              │ HTTP/WS (Socket.IO)  │ HTTP PUT (presigned URL)
+              │                      │
+┌─────────────▼──────────────────────┼────────────────────────┐
+│           SERVIDOR                 │                         │
+│   FastAPI + python-socketio        │                         │
+│   + boto3 (S3 SDK)                 │                         │
+│     (porta 3000)                   │                         │
+└─────────────┬──────────────────────┼────────────────────────┘
+              │                      │
+              │ Motor (async)        │ boto3 (presigned URLs)
+              │                      │
+┌─────────────▼──────────────────────▼────────────────────────┐
+│          DATABASE                     STORAGE                │
+│    MongoDB 7.0 Replica Set      MinIO S3 (porta 9000/9001) │
+│       (porta 27017)                  Bucket: chat-uploads   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,7 +52,8 @@
 1. **Autenticação:** Cliente faz POST `/register` ou `/login` → Servidor retorna JWT token
 2. **Conexão WebSocket:** Cliente conecta com Socket.IO passando token no `auth` object
 3. **Envio de Mensagem:** Cliente emite `chat:send` → Servidor valida, salva no MongoDB, emite `chat:new-message` para todos
-4. **Confirmação:** Servidor emite `chat:ack` para confirmar recebimento (Optimistic UI)
+4. **Upload de Arquivo:** Cliente POST `/uploads/grant` → Servidor gera presigned URL → Cliente faz PUT direto no MinIO → Cliente POST `/uploads/confirm` → Servidor cria mensagem com anexo
+5. **Confirmação:** Servidor emite `chat:ack` para confirmar recebimento (Optimistic UI)
 
 ---
 
@@ -58,12 +63,13 @@
 
 ```
 backend/
-├── main.py          # FastAPI app + Socket.IO handlers
-├── models.py        # Modelos Pydantic (MessageCreate, MessageResponse, etc)
+├── main.py          # FastAPI app + Socket.IO handlers + rotas upload
+├── models.py        # Modelos Pydantic (MessageCreate, MessageResponse, AttachmentInfo)
 ├── database.py      # Conexão MongoDB com Motor
 ├── auth.py          # JWT: create_token, decode_token, hash_password
 ├── users.py         # Rotas: POST /register, POST /login
-├── requirements.txt # Dependências Python
+├── storage.py       # MinIO/S3: presigned URLs, validação, upload/download
+├── requirements.txt # Dependências Python (boto3, python-multipart)
 └── Dockerfile       # Imagem Docker
 ```
 
@@ -1095,6 +1101,60 @@ mongosh --eval "rs.status()"
 - Configurado em `tsconfig.app.json` e `vite.config.ts`
 - Permite imports limpos: `@/stores/chat` ao invés de `../../../stores/chat`
 
+### ✅ TECH-05: Upload de Arquivos e Design Responsivo
+
+#### 1. Sistema de Upload MinIO/S3
+- **Armazenamento S3-compatible** com MinIO
+- **Presigned URLs** para upload/download direto (bypass backend)
+- **Validação de tipo** (imagens, PDFs, ZIP, TXT) e tamanho (15MB máx)
+- **Pipeline grant → PUT → confirm:**
+  1. `POST /uploads/grant` - Backend gera presigned PUT URL
+  2. Cliente faz PUT direto ao MinIO com progresso (0-100%)
+  3. `POST /uploads/confirm` - Backend salva referência e emite mensagem
+
+#### 2. AttachmentMenu WhatsApp-Style
+- **6 opções coloridas:**
+  - 📄 Documento (roxo) - PDFs, DOCs, XLS, TXT, ZIP
+  - 📷 Câmera (rosa) - Captura com camera do dispositivo
+  - 🖼️ Galeria (azul-verde) - Imagens da galeria
+  - 🎵 Áudio (laranja) - Arquivos de áudio
+  - 📍 Localização (verde) - Em desenvolvimento
+  - 👤 Contato (azul) - Em desenvolvimento
+- **Grid layout:** 3 colunas (desktop), 2 colunas (mobile)
+- **Animação:** Fade-in sequencial com delays
+- **Múltiplos arquivos:** Suporta seleção múltipla
+
+#### 3. Design System Responsivo (Mobile-First)
+- **Breakpoints:**
+  - `xs`: 0px (mobile portrait)
+  - `sm`: 600px (mobile landscape)
+  - `md`: 960px (tablet portrait)
+  - `lg`: 1264px (tablet landscape / small desktop)
+  - `xl`: 1904px (desktop)
+- **Media Queries:** min-width, max-width, only, portrait/landscape, touch/mouse
+- **Composables:** `useBreakpoint()` para detecção reativa
+- **Helper:** `responsive()` para valores dinâmicos
+
+#### 4. Componentes Responsivos
+- **DSMessageBubble:**
+  - Mobile: 90% width, 200px images, 8-12px padding
+  - Tablet: 75% width
+  - Desktop: 65% width, 300px images
+- **ChatView:**
+  - Mobile: 16px padding, 4px scrollbar, FAB 80px/16px
+  - Tablet: 20px padding
+  - Desktop: 24px padding, 8px scrollbar
+- **AttachmentMenu:**
+  - Mobile: 2-col grid, 240px width, 11px font
+  - Desktop: 3-col grid, 280px width, 12px font
+
+#### 5. UX Enhancements
+- **Clip Icon WhatsApp:** Rotação 135°, hover/touch effects
+- **Upload Progress:** Barra circular (0-100%) no botão send
+- **Image Preview:** Clicável (abre em nova aba)
+- **File Download:** Link com ícone e nome truncado (ellipsis)
+- **Touch Detection:** Efeitos diferentes para touch vs mouse
+
 ---
 
 ## Fluxos de Dados
@@ -1228,6 +1288,82 @@ Cliente A                  Servidor               MongoDB
 
 ---
 
+## Storage (MinIO/S3)
+
+### Arquitetura de Upload
+
+```
+Cliente                    Backend                   MinIO S3
+  |                           |                         |
+  |-- 1. Request Grant ------>|                         |
+  |   POST /uploads/grant     |                         |
+  |   {filename, mimetype,    |                         |
+  |    size}                  |                         |
+  |                           |                         |
+  |                           |-- validate ------------->
+  |                           |-- generate_key -------->
+  |                           |-- presign_put(key) ---->
+  |                           |                         |
+  |<-- {key, putUrl} ---------|                         |
+  |                           |                         |
+  |-- 2. Upload File ----------------------PUT-------->|
+  |   XMLHttpRequest                                   |
+  |   + Content-Type                                   |
+  |   + onprogress (0-100%)                            |
+  |                           |                         |
+  |<----------------------- 200 OK ---------------------|
+  |                           |                         |
+  |-- 3. Confirm Upload ----->|                         |
+  |   POST /uploads/confirm   |                         |
+  |   {key, filename,         |                         |
+  |    mimetype, author}      |                         |
+  |                           |                         |
+  |                           |-- insert message ------->MongoDB
+  |                           |   {attachment: {...}}   |
+  |                           |-- presign_get(key) ---->|
+  |                           |                         |
+  |<-- {message} -------------|                         |
+  |   {id, attachment, url}   |                         |
+  |                           |                         |
+  |                           |-- broadcast ----------->|
+  |<-- chat:new-message ------|   Socket.IO            |
+```
+
+### Configuração MinIO
+
+Ver documentação completa em [`MINIO_CORS_SETUP.md`](MINIO_CORS_SETUP.md).
+
+**Principais recursos:**
+- URLs pré-assinadas (PUT 5min, GET 1h)
+- Validação de tipo (images, PDFs, ZIP, TXT) e tamanho (15MB)
+- Bucket privado com acesso via presigned URLs
+- Sem necessidade de CORS (presigned bypass navegador)
+
+---
+
+## Design System Responsivo
+
+### Breakpoints Mobile-First
+
+- `xs: 0px` - Mobile portrait
+- `sm: 600px` - Mobile landscape
+- `md: 960px` - Tablet portrait
+- `lg: 1264px` - Tablet landscape / small desktop  
+- `xl: 1904px` - Desktop
+
+**Composables:** `useBreakpoint()`, `responsive()`  
+**Media Queries:** min-width, max-width, only, touch/mouse, portrait/landscape
+
+### Componentes Adaptáveis
+
+- **DSMessageBubble:** 90% (mobile) → 65% (desktop) width
+- **AttachmentMenu:** Grid 2-col (mobile) → 3-col (desktop)
+- **ChatView:** Padding 16px → 24px, Scrollbar 4px → 8px
+
+Ver código completo nos componentes do design system.
+
+---
+
 ## Migração Node.js → Python
 
 ### Motivação
@@ -1268,23 +1404,27 @@ Cliente A                  Servidor               MongoDB
 
 Este projeto demonstra:
 
-- ✅ **Arquitetura Full-Stack Moderna:** SPA + API assíncrona + NoSQL
+- ✅ **Arquitetura Full-Stack Moderna:** SPA + API assíncrona + NoSQL + Object Storage
 - ✅ **Real-Time com Socket.IO:** Comunicação bidirecional eficiente
 - ✅ **Autenticação Segura:** JWT + bcrypt + token expiration
-- ✅ **UX de Qualidade:** Optimistic UI, retry, typing, status, grouping
+- ✅ **UX de Qualidade:** Optimistic UI, retry, typing, status, grouping, responsividade
+- ✅ **Upload Seguro:** Presigned URLs + validação + progresso
+- ✅ **Design Responsivo:** Mobile-first com breakpoints adaptativos
 - ✅ **Type Safety:** TypeScript no front + Pydantic no back
 - ✅ **DevOps Friendly:** Docker Compose para dev local
-- ✅ **Escalável:** MongoDB replica set, paginação, retry logic
+- ✅ **Escalável:** MongoDB replica set, MinIO S3, paginação, retry logic
 
 **Próximos Passos Recomendados:**
 - Implementar salas de chat (rooms)
-- Upload de imagens (AWS S3 + presigned URLs)
+- Compartilhamento de localização e contatos
+- Upload de áudio e gravação de voz
 - Testes unitários (pytest + vitest)
 - CI/CD com GitHub Actions
-- Deploy em produção (Railway + Vercel + MongoDB Atlas)
+- Antivírus para arquivos enviados
+- Deploy em produção (Railway + Vercel + MongoDB Atlas + S3)
 
 ---
 
 **Criado em:** Novembro de 2025  
-**Aulas:** TECH-01 a TECH-04  
-**Stack:** Vue 3 + FastAPI + MongoDB + Socket.IO + Docker
+**Aulas:** TECH-01 a TECH-05  
+**Stack:** Vue 3 + FastAPI + MongoDB + MinIO S3 + Socket.IO + Docker

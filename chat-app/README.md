@@ -15,11 +15,16 @@
 
 - ✅ **Comunicação em Tempo Real** via WebSockets (Socket.IO)
 - ✅ **Autenticação JWT** com registro e login de usuários
+- ✅ **Upload de Arquivos** com MinIO/S3 e URLs pré-assinadas
+- ✅ **Compartilhamento de Imagens** com preview e download
+- ✅ **Design Responsivo** mobile-first (xs/sm/md/lg/xl breakpoints)
+- ✅ **Interface Estilo WhatsApp** com menu de anexos e clip icon rotacionado
 - ✅ **Persistência de Mensagens** com MongoDB (replica set)
 - ✅ **Interface Moderna** com Material Design (Vuetify)
 - ✅ **Type-Safe** com TypeScript (frontend) e Python type hints (backend)
 - ✅ **Validação de Dados** com Pydantic no backend e Zod no frontend
 - ✅ **Backend Assíncrono** com FastAPI e Motor (MongoDB async driver)
+- ✅ **Armazenamento S3** com MinIO para arquivos e imagens
 - ✅ **Docker Ready** com hot-reload para desenvolvimento
 - ✅ **Gerenciamento de Estado** com Pinia
 - ✅ **Roteamento** com Vue Router
@@ -46,9 +51,11 @@ cd projeto_estudo/chat-app
 docker-compose up
 
 # 3. Acesse a aplicação
-# Frontend: http://localhost:5173
-# Backend:  http://localhost:3000
-# MongoDB:  localhost:27017
+# Frontend:      http://localhost:5173
+# Backend API:   http://localhost:3000
+# MongoDB:       localhost:27017
+# MinIO S3:      http://localhost:9000
+# MinIO Console: http://localhost:9001 (MINIOADMIN/MINIOADMIN)
 ```
 
 ### Sem Docker
@@ -81,12 +88,13 @@ npm run dev
 ```
 chat-app/
 ├── backend/              # Servidor Python + FastAPI + Socket.IO
-│   ├── main.py          # Servidor principal com Socket.IO
-│   ├── models.py        # Modelos Pydantic (validação)
+│   ├── main.py          # Servidor principal com Socket.IO + rotas upload
+│   ├── models.py        # Modelos Pydantic (validação + AttachmentInfo)
 │   ├── database.py      # Conexão MongoDB com Motor
 │   ├── auth.py          # Autenticação JWT
 │   ├── users.py         # Rotas de registro e login
-│   ├── requirements.txt # Dependências Python
+│   ├── storage.py       # Integração MinIO/S3 + presigned URLs
+│   ├── requirements.txt # Dependências Python (boto3, python-multipart)
 │   ├── Dockerfile
 │   └── prisma/
 │       └── schema.prisma # Schema do banco (legado)
@@ -96,30 +104,38 @@ chat-app/
 │   │   ├── App.vue     # Componente raiz
 │   │   ├── components/
 │   │   │   ├── TypingIndicator.vue    # Indicador "digitando..."
-│   │   │   └── DateSeparator.vue      # Separador de datas
+│   │   │   ├── DateSeparator.vue      # Separador de datas
+│   │   │   ├── AttachmentMenu.vue     # Menu anexos WhatsApp
+│   │   │   └── Uploader.vue           # Upload drag-and-drop
+│   │   ├── composables/
+│   │   │   └── useUpload.ts           # Lógica de upload com progresso
 │   │   ├── views/
-│   │   │   ├── ChatView.vue           # Chat principal
+│   │   │   ├── ChatView.vue           # Chat principal + upload
 │   │   │   └── LoginView.vue          # Login/Registro
 │   │   ├── stores/
 │   │   │   ├── chat.ts                # Store do chat (Pinia)
 │   │   │   └── auth.ts                # Store de autenticação
 │   │   └── design-system/
 │   │       ├── components/
-│   │       │   ├── DSChatHeader.vue   # Header do chat
-│   │       │   ├── DSChatInput.vue    # Input com typing
-│   │       │   └── DSMessageBubble.vue # Bolha de mensagem
+│   │       │   ├── DSChatHeader.vue   # Header responsivo
+│   │       │   ├── DSChatInput.vue    # Input + clip WhatsApp
+│   │       │   └── DSMessageBubble.vue # Bolha com imagens/arquivos
 │   │       ├── composables/
 │   │       │   ├── useChat.ts         # Lógica do chat
 │   │       │   └── useScrollToBottom.ts # Auto-scroll
-│   │       ├── tokens/                # Design tokens
-│   │       └── types/                 # TypeScript types
+│   │       ├── tokens/                # Design tokens + breakpoints
+│   │       └── types/                 # TypeScript types + AttachmentSchema
 │   ├── Dockerfile
 │   ├── package.json
 │   ├── tsconfig.app.json # Config TypeScript com path alias
 │   └── vite.config.ts    # Config Vite com resolve alias
 ├── mongo-init/
 │   └── init-replica.sh  # Script para inicializar replica set
-├── docker-compose.yml   # Orquestração dos serviços
+├── minio-init/
+│   ├── init-bucket.sh   # Script para criar bucket S3
+│   └── cors.json        # Configuração CORS (opcional)
+├── docker-compose.yml   # Orquestração dos serviços (mongo, api, web, minio)
+├── MINIO_CORS_SETUP.md # Documentação MinIO e presigned URLs
 ├── .env                 # Variáveis de ambiente
 ├── README.md           # Este arquivo
 └── DOCUMENTACAO.md     # Documentação técnica detalhada
@@ -135,6 +151,8 @@ chat-app/
 | `POST` | `/register` | Criar nova conta | Não |
 | `POST` | `/login` | Autenticar usuário | Não |
 | `GET` | `/messages` | Histórico de mensagens (paginação: `?before=timestamp&limit=30`) | Sim |
+| `POST` | `/uploads/grant` | Gera URL pré-assinada para upload S3 | Não |
+| `POST` | `/uploads/confirm` | Confirma upload e cria mensagem com anexo | Não |
 
 ### Socket.IO Events
 
@@ -142,7 +160,7 @@ chat-app/
 
 | Evento | Payload | Descrição |
 |--------|---------|-----------|
-| `chat:send` | `{author, text, tempId?, status?, type?}` | Envia nova mensagem |
+| `chat:send` | `{author, text, tempId?, status?, type?, attachment?}` | Envia nova mensagem (texto ou anexo) |
 | `chat:typing` | `{userId, author, chatId, isTyping}` | Indica que usuário está digitando |
 | `chat:read` | `{messageIds: string[]}` | Marca mensagens como lidas |
 
@@ -150,8 +168,8 @@ chat-app/
 
 | Evento | Payload | Descrição |
 |--------|---------|-----------|
-| `chat:new-message` | `{id, author, text, timestamp, status, type}` | Broadcasting de nova mensagem |
-| `chat:ack` | `{tempId, id, timestamp}` | Confirma recebimento (troca tempId por id real) |
+| `chat:new-message` | `{id, author, text, timestamp, status, type, attachment?, url?}` | Broadcasting de nova mensagem (texto ou arquivo) |
+| `chat:ack` | `{tempId, id, timestamp, status}` | Confirma recebimento (troca tempId por id real) |
 | `chat:typing` | `{userId, author, chatId, isTyping}` | Broadcasting de status de digitação |
 | `chat:delivered` | `{messageId}` | Mensagem entregue ao destinatário |
 | `chat:read` | `{messageIds: string[]}` | Mensagens foram lidas |
@@ -172,13 +190,24 @@ JWT_EXPIRATION_MINUTES=43200
 
 # Frontend
 VITE_SOCKET_URL=http://localhost:3000
+
+# MinIO / S3
+S3_ENDPOINT=http://minio:9000
+S3_REGION=us-east-1
+S3_ACCESS_KEY=MINIOADMIN
+S3_SECRET_KEY=MINIOADMIN
+S3_BUCKET=chat-uploads
+PUBLIC_BASE_URL=http://localhost:9000
+MAX_UPLOAD_MB=15
 ```
 
 ### Portas
 
 - **Frontend:** 5173
-- **Backend:** 3000
+- **Backend API:** 3000
 - **MongoDB:** 27017
+- **MinIO S3:** 9000
+- **MinIO Console:** 9001
 
 Para alterar, edite `docker-compose.yml`:
 
@@ -221,12 +250,13 @@ docker-compose restart backend # Reinicia apenas o backend
 ### Frontend
 - **Vue 3** - Framework progressivo (Composition API)
 - **TypeScript** - Type safety
-- **Vuetify 3** - Material Design UI
+- **Vuetify 3** - Material Design UI (componentes responsivos)
 - **Pinia** - State management oficial
 - **Vue Router** - Roteamento SPA
 - **Socket.IO Client** - WebSocket client
-- **Zod** - Validação de schemas
+- **Zod** - Validação de schemas (com AttachmentSchema)
 - **Vite** - Build tool ultra-rápido
+- **XMLHttpRequest** - Upload com progresso (0-100%)
 
 ### Backend
 - **Python 3.11** - Linguagem de programação
@@ -237,10 +267,14 @@ docker-compose restart backend # Reinicia apenas o backend
 - **PyJWT** - Geração e validação de tokens JWT
 - **Uvicorn** - Servidor ASGI de alto desempenho
 - **Passlib + bcrypt** - Hashing seguro de senhas
+- **boto3** - SDK AWS para MinIO/S3
+- **python-multipart** - Suporte a uploads multipart
 
-### Database
+### Database & Storage
 - **MongoDB 7.0** - Banco NoSQL orientado a documentos
 - **Replica Set** - Alta disponibilidade e oplog para change streams
+- **MinIO** - Object storage S3-compatible
+- **Presigned URLs** - Upload/download direto sem passar pelo backend
 
 ### DevOps
 - **Docker** - Containerização
@@ -399,11 +433,22 @@ Para documentação técnica detalhada linha por linha, consulte [`DOCUMENTACAO.
 - [x] Separadores de data contextuais
 - [x] Optimistic UI com retry/backoff
 - [x] Backend migrado para Python/FastAPI
+- [x] Upload de arquivos e imagens (MinIO/S3)
+- [x] Presigned URLs para uploads seguros
+- [x] Menu de anexos estilo WhatsApp (6 opções)
+- [x] Progresso de upload (0-100%)
+- [x] Preview de imagens clicáveis
+- [x] Download de arquivos com ícone
+- [x] Design responsivo mobile-first
+- [x] Breakpoints xs/sm/md/lg/xl
+- [x] Clip icon rotacionado 135° (WhatsApp style)
 
 ### 🚧 Em Desenvolvimento
 - [ ] Salas de chat múltiplas (rooms)
 - [ ] Status online/offline de usuários
-- [ ] Upload de imagens/arquivos
+- [ ] Compartilhamento de localização (GPS)
+- [ ] Compartilhamento de contatos
+- [ ] Upload de áudio/voz
 - [ ] Reações a mensagens (emoji)
 - [ ] Busca de mensagens
 - [ ] Notificações push
@@ -411,6 +456,7 @@ Para documentação técnica detalhada linha por linha, consulte [`DOCUMENTACAO.
 - [ ] Testes unitários e E2E
 - [ ] CI/CD Pipeline
 - [ ] Rate limiting e throttling
+- [ ] Antivírus para arquivos enviados
 - [ ] Mensagens criptografadas (E2E encryption)
 
 ## 🤝 Contribuindo
@@ -451,11 +497,12 @@ Este projeto é um projeto de estudo e está disponível sob a licença ISC.
 - **TECH-02 (refactor):** Migração backend Node.js → Python/FastAPI
 - **TECH-03:** Sistema completo de autenticação JWT
 - **TECH-04:** UX avançada (auto-scroll, typing, status, grouping, pagination, optimistic UI)
+- **TECH-05:** Upload de arquivos/imagens + MinIO/S3 + Design responsivo mobile-first
 
 ---
 
 ⭐️ Se este projeto foi útil para seus estudos, considere dar uma estrela!
 
-**Status:** � Funcional - Em evolução constante  
+**Status:** 🚀 Funcional - Em evolução constante  
 **Criado em:** Novembro de 2025  
-**Última atualização:** Novembro de 2025 (TECH-04)
+**Última atualização:** Novembro de 2025 (TECH-05)
