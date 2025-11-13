@@ -10,8 +10,21 @@ import { z } from 'zod';
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read';
 
 /**
+ * 🆕 Informação de anexo (arquivo/imagem)
+ */
+export const AttachmentSchema = z.object({
+  bucket: z.string(),
+  key: z.string(),
+  filename: z.string(),
+  mimetype: z.string(),
+});
+
+export type Attachment = z.infer<typeof AttachmentSchema>;
+
+/**
  * Schema de validação para mensagens do chat
  * ✅ Atualizado para suportar Optimistic UI e novos status
+ * ✅ Atualizado para suportar anexos (imagens/arquivos)
  */
 export const MessageSchema = z.object({
   id: z.string().min(1, 'ID é obrigatório').optional(), // 🔧 Agora opcional (tempId pode existir)
@@ -21,11 +34,14 @@ export const MessageSchema = z.object({
   timestamp: z.number().positive('Timestamp inválido'),
   status: z.enum(['pending', 'sent', 'delivered', 'read']).optional().default('sent'), // 🔧 Adicionado 'pending'
   type: z.enum(['text', 'image', 'file', 'audio']).optional().default('text'),
+  attachment: AttachmentSchema.optional(), // 🆕 Dados do anexo (S3/MinIO)
+  url: z.string().url().optional(), // 🆕 URL pré-assinada para download
 });
 
 /**
  * Schema para mensagens recebidas do socket que podem não ter ID/timestamp
  * Usado para validar payloads brutos antes de processar
+ * ✅ Atualizado para suportar anexos
  */
 export const IncomingMessageSchema = z.object({
   id: z.string().optional(),
@@ -35,6 +51,8 @@ export const IncomingMessageSchema = z.object({
   timestamp: z.number().optional(),
   status: z.enum(['pending', 'sent', 'delivered', 'read']).optional(), // 🔧 Adicionado 'pending'
   type: z.enum(['text', 'image', 'file', 'audio']).optional(),
+  attachment: AttachmentSchema.optional(), // 🆕 Dados do anexo
+  url: z.string().optional(), // 🆕 URL pré-assinada (não precisa validar URL aqui)
 });
 
 /**

@@ -3,25 +3,26 @@
     :color="colors.primary" 
     elevation="1" 
     :style="{ borderBottom: `1px solid ${colors.primaryLight}` }"
+    density="comfortable"
   >
-    <v-app-bar-title class="text-white d-flex align-center">
-      <v-avatar :size="40" :color="colors.secondary" class="mr-3">
+    <div class="d-flex align-center w-100 px-2">
+      <v-avatar :size="40" :color="colors.secondary" class="mr-3 flex-shrink-0">
         <v-img v-if="avatar" :src="avatar" />
         <span v-else class="text-h6">{{ initials }}</span>
       </v-avatar>
       
-      <div>
-        <div class="text-subtitle-1 font-weight-bold">{{ name }}</div>
-        <div class="text-caption" style="opacity: 0.8;">
+      <div class="header-info flex-grow-1">
+        <div class="header-name text-white">{{ name }}</div>
+        <div class="header-status text-white">
           {{ statusText }}
         </div>
       </div>
-    </v-app-bar-title>
 
-    <template v-slot:append>
-      <v-btn icon="mdi-magnify" color="white" variant="text" @click="$emit('search')" />
-      <v-btn icon="mdi-dots-vertical" color="white" variant="text" @click="$emit('menu')" />
-    </template>
+      <div class="d-flex align-center flex-shrink-0">
+        <v-btn icon="mdi-magnify" color="white" variant="text" @click="$emit('search')" />
+        <v-btn icon="mdi-dots-vertical" color="white" variant="text" @click="$emit('menu')" />
+      </div>
+    </div>
   </v-app-bar>
 </template>
 
@@ -66,3 +67,31 @@ const statusText = computed(() => {
   return 'offline';
 });
 </script>
+
+<style scoped>
+.header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.header-name {
+  font-size: 1.063rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.header-status {
+  font-size: 0.813rem;
+  line-height: 1.2;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: visible;
+  margin-top: 2px;
+}
+</style>

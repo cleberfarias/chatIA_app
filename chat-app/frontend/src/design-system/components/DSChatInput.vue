@@ -1,13 +1,28 @@
 <template>
   <div class="ds-chat-input" :style="{ background: colors.inputBackground, borderTop: `1px solid ${colors.border}` }">
-    <v-form @submit.prevent="handleSubmit" class="d-flex align-center pa-2">
+    <v-form @submit.prevent="handleSubmit" class="d-flex align-center pa-2 gap-2">
+      <!-- 😊 EMOJI -->
       <v-btn 
         icon="mdi-emoticon-outline" 
         variant="text" 
         color="grey-darken-1" 
-        class="mr-2"
+        size="large"
         @click="$emit('emoji')"
       />
+      
+      <!-- 📎 ANEXO (estilo WhatsApp) -->
+      <slot name="attach-btn">
+        <v-btn 
+          icon 
+          variant="text" 
+          color="grey-darken-1"
+          size="large"
+          class="attach-btn"
+          :disabled="uploading"
+        >
+          <v-icon class="attach-icon">mdi-paperclip</v-icon>
+        </v-btn>
+      </slot>
       
       <v-text-field
         :model-value="modelValue"
@@ -20,26 +35,28 @@
         bg-color="white"
         class="flex-grow-1"
         @keyup.enter.exact.prevent="handleSubmit"
-      >
-        <template v-slot:append-inner>
-          <v-btn 
-            icon="mdi-paperclip" 
-            variant="text" 
-            size="small" 
-            color="grey-darken-1"
-            @click="$emit('attach')"
-          />
-        </template>
-      </v-text-field>
+        :disabled="uploading"
+      />
       
       <v-btn
         icon
         :color="hasText ? colors.secondary : 'grey'"
-        class="ml-2"
+        class="ml-2 send-btn"
         @click="handleSubmit"
-        :disabled="!hasText"
+        :disabled="!hasText || uploading"
+        :loading="uploading"
       >
         <v-icon>{{ hasText ? 'mdi-send' : 'mdi-microphone' }}</v-icon>
+        
+        <!-- Barra de progresso circular -->
+        <v-progress-circular
+          v-if="uploading && uploadProgress > 0"
+          :model-value="uploadProgress"
+          :size="40"
+          :width="3"
+          color="white"
+          class="progress-overlay"
+        />
       </v-btn>
     </v-form>
   </div>
@@ -51,16 +68,20 @@ import { colors } from '../tokens';
 
 interface Props {
   modelValue: string;
+  uploading?: boolean;
+  uploadProgress?: number;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  uploading: false,
+  uploadProgress: 0
+});
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'submit': [text: string];
-  'typing': [isTyping: boolean]; // 🆕 Evento de digitação
+  'typing': [isTyping: boolean];
   'emoji': [];
-  'attach': [];
   'voice': [];
 }>();
 
@@ -101,7 +122,7 @@ watch(() => props.modelValue, (newValue) => {
 });
 
 function handleSubmit() {
-  if (hasText.value) {
+  if (hasText.value && !props.uploading) {
     // Para o indicador de digitação
     if (isTyping.value) {
       isTyping.value = false;
@@ -114,7 +135,7 @@ function handleSubmit() {
     emit('submit', props.modelValue);
     // Limpa o campo após enviar
     emit('update:modelValue', '');
-  } else {
+  } else if (!hasText.value && !props.uploading) {
     emit('voice');
   }
 }
@@ -123,5 +144,35 @@ function handleSubmit() {
 <style scoped>
 .ds-chat-input {
   width: 100%;
+}
+
+.send-btn {
+  position: relative;
+}
+
+.progress-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* 📎 Estilo WhatsApp - Clipe rotacionado 135° */
+.attach-btn {
+  transition: transform 0.2s ease;
+}
+
+.attach-icon {
+  transform: rotate(135deg);
+  transition: transform 0.2s ease;
+}
+
+.attach-btn:hover .attach-icon {
+  transform: rotate(135deg) scale(1.1);
+}
+
+.gap-2 {
+  gap: 8px;
 }
 </style>
