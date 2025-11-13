@@ -4,7 +4,27 @@
       {{ author }}
     </div>
     
-    <div class="ds-message-text">
+    <!-- 🖼️ IMAGEM -->
+    <div v-if="type === 'image' && attachmentUrl" class="ds-message-image">
+      <a :href="attachmentUrl" target="_blank" rel="noopener noreferrer">
+        <img :src="attachmentUrl" :alt="fileName || 'Imagem'" />
+      </a>
+    </div>
+    
+    <!-- 📎 ARQUIVO -->
+    <div v-else-if="type === 'file' && attachmentUrl" class="ds-message-file">
+      <v-icon icon="mdi-file-document" size="32" class="mr-2" />
+      <div class="file-info">
+        <div class="file-name">{{ fileName || 'Arquivo' }}</div>
+        <a :href="attachmentUrl" target="_blank" rel="noopener noreferrer" class="file-download">
+          <v-icon icon="mdi-download" size="16" class="mr-1" />
+          Download
+        </a>
+      </div>
+    </div>
+    
+    <!-- 💬 TEXTO -->
+    <div v-if="type === 'text' || !type" class="ds-message-text">
       <slot />
     </div>
     
@@ -29,13 +49,17 @@ interface Props {
   author?: string;
   timestamp: number;
   variant: 'sent' | 'received';
-  status?: 'pending' | 'sent' | 'delivered' | 'read'; // 🔧 Adicionado 'pending'
+  status?: 'pending' | 'sent' | 'delivered' | 'read';
   showAuthor?: boolean;
-  showTimestamp?: boolean; // 🆕 Controla exibição do timestamp
+  showTimestamp?: boolean;
+  type?: 'text' | 'image' | 'file';
+  attachmentUrl?: string;
+  fileName?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showTimestamp: true,
+  type: 'text',
 });
 
 const formattedTime = computed(() => {
@@ -64,13 +88,35 @@ const statusColor = computed(() => {
 
 <style scoped>
 .ds-message-bubble {
-  max-width: 65%;
+  max-width: 85%;
   padding: v-bind('spacing.sm') v-bind('spacing.md');
   border-radius: v-bind('radius.md');
   box-shadow: v-bind('shadows.sm');
   font-family: v-bind('typography.fontFamily.primary');
   font-size: v-bind('typography.fontSize.base');
   line-height: v-bind('typography.lineHeight.normal');
+}
+
+/* 📱 Mobile - Bolhas mais largas */
+@media (max-width: 599px) {
+  .ds-message-bubble {
+    max-width: 90%;
+    padding: 8px 12px;
+  }
+}
+
+/* 📱 Tablet */
+@media (min-width: 600px) and (max-width: 959px) {
+  .ds-message-bubble {
+    max-width: 75%;
+  }
+}
+
+/* 💻 Desktop */
+@media (min-width: 960px) {
+  .ds-message-bubble {
+    max-width: 65%;
+  }
 }
 
 .ds-message-bubble.sent {
@@ -106,5 +152,63 @@ const statusColor = computed(() => {
 .ds-message-time {
   font-size: v-bind('typography.fontSize.xs');
   color: v-bind('colors.textHint');
+}
+
+.ds-message-image {
+  margin-bottom: v-bind('spacing.xs');
+}
+
+.ds-message-image img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: v-bind('radius.sm');
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+/* 📱 Mobile - Imagens menores */
+@media (max-width: 599px) {
+  .ds-message-image img {
+    max-height: 200px;
+  }
+}
+
+.ds-message-image img:hover {
+  opacity: 0.9;
+}
+
+.ds-message-file {
+  display: flex;
+  align-items: center;
+  padding: v-bind('spacing.sm');
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: v-bind('radius.sm');
+  margin-bottom: v-bind('spacing.xs');
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-weight: v-bind('typography.fontWeight.medium');
+  margin-bottom: 4px;
+  color: v-bind('colors.textPrimary');
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-download {
+  display: inline-flex;
+  align-items: center;
+  font-size: v-bind('typography.fontSize.sm');
+  color: v-bind('colors.primary');
+  text-decoration: none;
+}
+
+.file-download:hover {
+  text-decoration: underline;
 }
 </style>

@@ -41,7 +41,7 @@
         <!-- 🆕 SEPARADORES DE DATA + MENSAGENS AGRUPADAS -->
         <template v-for="(item, index) in groupedMessages" :key="item.id || index">
           <!-- Separador de Data -->
-          <DateSeparator v-if="item.type === 'date'" :date="item.date" />
+          <DateSeparator v-if="'date' in item" :date="item.date" />
           
           <!-- Mensagem -->
           <div
@@ -55,8 +55,11 @@
               :status="item.status"
               :show-author="item.showAuthor"
               :show-timestamp="item.showTimestamp"
+              :type="item.type || 'text'"
+              :attachment-url="item.url"
+              :file-name="item.attachment?.filename || item.text"
             >
-              {{ item.text }}
+              {{ item.type === 'text' ? item.text : '' }}
             </DSMessageBubble>
           </div>
         </template>
@@ -88,11 +91,34 @@
     <div class="chat-input-wrapper">
       <DSChatInput
         v-model="text"
+        :uploading="uploadingFile"
+        :upload-progress="uploadProgress"
         @submit="handleSendMessage"
         @typing="handleTyping"
         @emoji="() => {}"
-        @attach="() => {}"
-      />
+      >
+        <template #attach-btn>
+          <!-- Menu de Anexos estilo WhatsApp -->
+          <AttachmentMenu
+            v-model="showAttachmentMenu"
+            @file-selected="handleFilesSelected"
+          >
+            <template #activator="{ props }">
+              <v-btn 
+                icon 
+                variant="text" 
+                color="grey-darken-1"
+                size="large"
+                class="attach-btn"
+                :disabled="uploadingFile"
+                v-bind="props"
+              >
+                <v-icon class="attach-icon">mdi-paperclip</v-icon>
+              </v-btn>
+            </template>
+          </AttachmentMenu>
+        </template>
+      </DSChatInput>
     </div>
 
     <!-- DIALOG PARA NOME DO USUÁRIO -->
@@ -132,10 +158,12 @@ import DSMessageBubble from '../design-system/components/DSMessageBubble.vue';
 import DSChatInput from '../design-system/components/DSChatInput.vue';
 import TypingIndicator from '../components/TypingIndicator.vue';
 import DateSeparator from '../components/DateSeparator.vue';
+import AttachmentMenu from '../components/AttachmentMenu.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
 import { colors, spacing } from '../design-system/tokens/index.ts';
+import { uploadAndSend } from '../composables/useUpload';
 
 const router = useRouter();
 const chatStore = useChatStore();
@@ -145,6 +173,10 @@ const text = ref('');
 const showNameDialog = ref(true);
 const isScrolledToBottom = ref(true);
 const lastScrollTop = ref(0);
+const showAttachmentMenu = ref(false);
+const apiBaseUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+const uploadingFile = ref(false);
+const uploadProgress = ref(0);
 
 const { containerRef, scrollToBottom } = useScrollToBottom();
 
@@ -179,7 +211,7 @@ const groupedMessages = computed(() => {
 
     result.push({
       ...msg,
-      type: 'message',
+      // 🔧 NÃO sobrescreve o type original (mantém 'text', 'image', 'file', etc)
       showAuthor: !shouldGroup || msg.author !== author.value,
       showTimestamp: !shouldGroup || index === chatStore.messages.length - 1,
     });
@@ -287,6 +319,41 @@ function handleLogout() {
   authStore.logout();
   router.push('/login');
 }
+
+async function handleFilesSelected(fileList: FileList) {
+  console.log('🚀 Arquivos selecionados:', fileList.length);
+  
+  // Upload de múltiplos arquivos sequencialmente
+  for (let i = 0; i < fileList.length; i++) {
+    const file = fileList[i];
+    if (file) {
+      await handleFileUpload(file);
+    }
+  }
+}
+
+async function handleFileUpload(file: File) {
+  console.log('🚀 Iniciando upload do arquivo:', file.name);
+  uploadingFile.value = true;
+  uploadProgress.value = 0;
+  
+  try {
+    await uploadAndSend(apiBaseUrl, file, author.value, (progress) => {
+      uploadProgress.value = progress;
+      console.log(`📊 Progresso: ${progress}%`);
+    });
+    
+    uploadingFile.value = false;
+    uploadProgress.value = 0;
+    scrollToBottom(true);
+    console.log('✅ Upload concluído com sucesso!');
+  } catch (error: any) {
+    uploadingFile.value = false;
+    uploadProgress.value = 0;
+    console.error('❌ Erro no upload:', error);
+    // TODO: Mostrar mensagem de erro ao usuário
+  }
+}
 </script>
 
 <style scoped>
@@ -312,13 +379,34 @@ function handleLogout() {
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
-  padding-bottom: 80px; /* Espaço para o input fixo */
+  padding-bottom: 80px;
+}
+
+/* 📱 Mobile - Padding menor */
+@media (max-width: 599px) {
+  .messages-wrapper {
+    padding-bottom: 70px;
+  }
 }
 
 .messages-area {
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  padding: 16px;
+}
+
+/* 📱 Tablet e Desktop - Padding maior */
+@media (min-width: 600px) {
+  .messages-area {
+    padding: 20px;
+  }
+}
+
+@media (min-width: 960px) {
+  .messages-area {
+    padding: 24px;
+  }
 }
 
 .chat-input-wrapper {
@@ -334,6 +422,13 @@ function handleLogout() {
 
 .messages-wrapper::-webkit-scrollbar {
   width: 8px;
+}
+
+/* 📱 Mobile - Scrollbar mais fina */
+@media (max-width: 599px) {
+  .messages-wrapper::-webkit-scrollbar {
+    width: 4px;
+  }
 }
 
 .messages-wrapper::-webkit-scrollbar-track {
@@ -356,5 +451,34 @@ function handleLogout() {
   right: 20px;
   z-index: 5;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 📱 Mobile - Botão menor e mais à esquerda */
+@media (max-width: 599px) {
+  .new-messages-fab {
+    bottom: 80px;
+    right: 16px;
+  }
+}
+
+/* 📎 Estilo WhatsApp - Clipe rotacionado 135° */
+.attach-btn {
+  transition: transform 0.2s ease;
+}
+
+.attach-icon {
+  transform: rotate(135deg);
+  transition: transform 0.2s ease;
+}
+
+.attach-btn:hover .attach-icon {
+  transform: rotate(135deg) scale(1.1);
+}
+
+/* 📱 Mobile - Efeito touch (sem hover) */
+@media (hover: none) and (pointer: coarse) {
+  .attach-btn:active .attach-icon {
+    transform: rotate(135deg) scale(0.95);
+  }
 }
 </style>

@@ -1,11 +1,13 @@
 import socketio
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from database import messages_collection
 from models import MessageCreate, MessageResponse
 from bson import ObjectId
 from typing import Optional
+from pydantic import BaseModel
+from storage import validate_upload, new_object_key, presign_put, presign_get, S3_BUCKET
 
 # FastAPI app
 app = FastAPI(title="Chat API")
@@ -69,14 +71,22 @@ async def get_messages(
     # Transforma documentos para o formato esperado pelo frontend
     messages = []
     for doc in reversed(docs):  # Inverte para ordem crescente
-        messages.append(MessageResponse(
-            id=str(doc["_id"]),
-            author=doc["author"],
-            text=doc["text"],
-            timestamp=int(doc["createdAt"].timestamp() * 1000),
-            status=doc.get("status", "sent"),
-            type=doc.get("type", "text")
-        ).model_dump())
+        msg_dict = {
+            "id": str(doc["_id"]),
+            "author": doc["author"],
+            "text": doc["text"],
+            "timestamp": int(doc["createdAt"].timestamp() * 1000),
+            "status": doc.get("status", "sent"),
+            "type": doc.get("type", "text")
+        }
+        
+        # Adiciona attachment se existir
+        if "attachment" in doc:
+            msg_dict["attachment"] = doc["attachment"]
+            # Gera URL assinada para acesso ao arquivo
+            msg_dict["url"] = presign_get(doc["attachment"]["key"])
+        
+        messages.append(msg_dict)
     
     return {
         "messages": messages,
@@ -177,14 +187,19 @@ async def handle_chat_send(sid, data):
         print(f"💾 Mensagem salva no MongoDB: {message_id} (user: {user_id})")
         
         # Prepara resposta
-        response = MessageResponse(
-            id=message_id,
-            author=doc["author"],
-            text=doc["text"],
-            timestamp=int(doc["createdAt"].timestamp() * 1000),
-            status=doc["status"],
-            type=doc["type"]
-        ).model_dump()
+        response = {
+            "id": message_id,
+            "author": doc["author"],
+            "text": doc["text"],
+            "timestamp": int(doc["createdAt"].timestamp() * 1000),
+            "status": doc["status"],
+            "type": doc["type"]
+        }
+        
+        # Adiciona attachment se existir
+        if "attachment" in doc:
+            response["attachment"] = doc["attachment"]
+            response["url"] = presign_get(doc["attachment"]["key"])
         
         # 1. envia ACK para o rementente(optmistic UI)
         await sio.emit("chat:ack", {"tempId": temp_id, "id": message_id, "status": "sent", "timestamp": response["timestamp"]}, room=sid)
@@ -232,3 +247,61 @@ async def handle_chat_read(sid, data):
         
     except Exception as e:
         print(f"❌ Erro em chat:read: {e}")
+
+
+class UploadRequest(BaseModel):
+    filename: str
+    mimetype: str
+    size: int  # bytes
+
+class UploadGrant(BaseModel):
+    key: str
+    putUrl: str
+
+@app.post("/uploads/grant", response_model=UploadGrant)
+async def grant_upload(body: UploadRequest):
+    size_mb = max(1, body.size // (1024*1024))
+    try:
+        validate_upload(body.filename, body.mimetype, size_mb)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    key = new_object_key(body.filename)
+    url = presign_put(key, body.mimetype)
+    return {"key": key, "putUrl": url}
+
+class ConfirmUploadIn(BaseModel):
+    key: str
+    filename: str
+    mimetype: str
+    author: str
+
+@app.post("/uploads/confirm")
+async def confirm_upload(body: ConfirmUploadIn):
+    # (Opcional) antivirus stub aqui
+    from datetime import datetime, timezone
+    doc = {
+        "author": body.author,
+        "text": body.filename,
+        "type": "file" if not body.mimetype.startswith("image/") else "image",
+        "status": "sent",
+        "createdAt": datetime.now(timezone.utc),
+        "attachment": {
+            "bucket": S3_BUCKET,
+            "key": body.key,
+            "filename": body.filename,
+            "mimetype": body.mimetype
+        }
+    }
+    result = await messages_collection.insert_one(doc)
+    msg = {
+        "id": str(result.inserted_id),
+        "author": doc["author"],
+        "text": doc["text"],
+        "type": doc["type"],
+        "status": doc["status"],
+        "timestamp": int(doc["createdAt"].timestamp()*1000),
+        "attachment": doc["attachment"],
+        "url": presign_get(body.key)  # URL GET assinada p/ exibição imediata
+    }
+    await sio.emit("chat:new-message", msg)
+    return {"ok": True, "message": msg}
