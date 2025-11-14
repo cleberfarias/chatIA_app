@@ -40,10 +40,10 @@
       
       <v-btn
         icon
-        :color="hasText ? colors.secondary : 'grey'"
+        :color="hasText ? colors.secondary : 'grey-darken-1'"
         class="ml-2 send-btn"
         @click="handleSubmit"
-        :disabled="!hasText || uploading"
+        :disabled="uploading"
         :loading="uploading"
       >
         <v-icon>{{ hasText ? 'mdi-send' : 'mdi-microphone' }}</v-icon>
