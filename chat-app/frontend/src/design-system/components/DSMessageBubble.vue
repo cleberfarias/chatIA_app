@@ -11,6 +11,14 @@
       </a>
     </div>
     
+    <!-- 🎵 ÁUDIO -->
+    <div v-else-if="type === 'audio' && attachmentUrl" class="ds-message-audio">
+      <v-icon icon="mdi-microphone" size="24" class="mr-2" color="primary" />
+      <audio controls :src="attachmentUrl" class="audio-player">
+        Seu navegador não suporta o elemento de áudio.
+      </audio>
+    </div>
+    
     <!-- 📎 ARQUIVO -->
     <div v-else-if="type === 'file' && attachmentUrl" class="ds-message-file">
       <v-icon icon="mdi-file-document" size="32" class="mr-2" />
@@ -24,9 +32,7 @@
     </div>
     
     <!-- 💬 TEXTO -->
-    <div v-if="type === 'text' || !type" class="ds-message-text">
-      <slot />
-    </div>
+    <div v-if="type === 'text' || !type" class="ds-message-text" v-html="renderedText"></div>
     
     <div v-if="showTimestamp" class="ds-message-footer">
       <span class="ds-message-time">{{ formattedTime }}</span>
@@ -43,7 +49,28 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { marked } from 'marked';
+import hljs from 'highlight.js/lib/core';
+import python from 'highlight.js/lib/languages/python';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import bash from 'highlight.js/lib/languages/bash';
+import json from 'highlight.js/lib/languages/json';
+import 'highlight.js/styles/github-dark.css';
 import { colors, spacing, radius, shadows, typography } from '../tokens';
+
+// Registra linguagens para syntax highlighting
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('json', json);
+
+// Configura marked
+marked.setOptions({
+  breaks: true, // Converte \n em <br>
+  gfm: true, // GitHub Flavored Markdown
+});
 
 interface Props {
   author?: string;
@@ -52,9 +79,10 @@ interface Props {
   status?: 'pending' | 'sent' | 'delivered' | 'read';
   showAuthor?: boolean;
   showTimestamp?: boolean;
-  type?: 'text' | 'image' | 'file';
+  type?: 'text' | 'image' | 'file' | 'audio';
   attachmentUrl?: string;
   fileName?: string;
+  text?: string; // Texto da mensagem para renderizar markdown
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -83,6 +111,36 @@ const statusColor = computed(() => {
     case 'read': return 'blue';
     default: return 'grey';
   }
+});
+
+const renderedText = computed(() => {
+  if (!props.text) return '';
+  
+  // Renderiza markdown
+  let html = marked.parse(props.text) as string;
+  
+  // Aplica syntax highlighting em blocos de código
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const codeBlocks = doc.querySelectorAll('pre code');
+  
+  codeBlocks.forEach((block) => {
+    const code = block.textContent || '';
+    const classes = block.className.match(/language-(\w+)/);
+    const language = classes ? classes[1] : '';
+    
+    if (language && hljs.getLanguage(language)) {
+      try {
+        const highlighted = hljs.highlight(code, { language }).value;
+        block.innerHTML = highlighted;
+        block.classList.add('hljs');
+      } catch (err) {
+        console.error('Erro ao fazer highlight:', err);
+      }
+    }
+  });
+  
+  return doc.body.innerHTML;
 });
 </script>
 
@@ -142,6 +200,38 @@ const statusColor = computed(() => {
   color: v-bind('colors.textPrimary');
 }
 
+/* Estilos para markdown renderizado */
+.ds-message-text :deep(pre) {
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.ds-message-text :deep(code) {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Código inline */
+.ds-message-text :deep(p code) {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.ds-message-text :deep(p) {
+  margin: 4px 0;
+}
+
+.ds-message-text :deep(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
 .ds-message-footer {
   display: flex;
   align-items: center;
@@ -175,6 +265,28 @@ const statusColor = computed(() => {
 
 .ds-message-image img:hover {
   opacity: 0.9;
+}
+
+.ds-message-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: v-bind('spacing.sm');
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: v-bind('radius.sm');
+  margin-bottom: v-bind('spacing.xs');
+  min-width: 250px;
+}
+
+.audio-player {
+  flex: 1;
+  max-width: 100%;
+  height: 32px;
+}
+
+/* Estiliza o player de áudio para combinar com o design */
+.audio-player::-webkit-media-controls-panel {
+  background-color: transparent;
 }
 
 .ds-message-file {

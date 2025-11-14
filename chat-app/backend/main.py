@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from storage import validate_upload, new_object_key, presign_put, presign_get, S3_BUCKET
 from bots.core import is_command, run_command
 from bots.automations import start_scheduler, load_and_schedule_all, handle_keyword_if_matches
-from bots.ai_bot import ask_chatgpt, is_ai_question, clean_bot_mention
+from bots.ai_bot import ask_chatgpt, is_ai_question, clean_bot_mention, clear_conversation, get_conversation_count
+from transcription import transcribe_from_s3
 
 # FastAPI app
 app = FastAPI(title="Chat API")
@@ -255,21 +256,44 @@ async def handle_chat_send(sid, data):
         author = data.get("author", "")
         text = data.get("text", "").strip()
         
-        # 1) COMANDOS (ex: /help, /echo, /time, /ai)
+        # 1) COMANDOS (ex: /help, /echo, /time, /ai, /limpar)
         if is_command(text):
-            # Comando especial /ai precisa ser async
+            from bots.automations import publish_message
+            
+            # Comando /limpar - Limpa histórico de conversa
+            if text.lower() in ["/limpar", "/clear"]:
+                clear_conversation(user_id)
+                count = get_conversation_count(user_id)
+                await publish_message(
+                    sio.emit, 
+                    author="Bot 🧹", 
+                    text=f"✅ Histórico de conversa limpo! ({count} mensagens removidas)\nPodemos começar uma nova conversa do zero."
+                )
+                return
+            
+            # Comando /ai - Pergunta ao ChatGPT com contexto
             if text.lower().startswith("/ai "):
                 question = text[4:].strip()
                 if question:
-                    from bots.automations import publish_message
+                    import asyncio
+                    
                     # Envia indicador de digitação
                     await sio.emit("chat:typing", {
                         "author": "Bot",
                         "isTyping": True
                     })
                     
-                    # Processa com ChatGPT
-                    ai_response = await ask_chatgpt(question)
+                    # Simula "pensamento" (0.5-1.5 segundos)
+                    await asyncio.sleep(0.8)
+                    
+                    # Processa com ChatGPT (mantém contexto por user_id, passa nome do autor)
+                    ai_response = await ask_chatgpt(question, user_id, author)
+                    
+                    # Simula digitação realista (baseado no tamanho da resposta)
+                    # ~50 caracteres por segundo (digitação rápida mas humana)
+                    typing_time = len(ai_response) / 50
+                    typing_time = max(1.0, min(typing_time, 4.0))  # Entre 1 e 4 segundos
+                    await asyncio.sleep(typing_time)
                     
                     # Remove indicador de digitação
                     await sio.emit("chat:typing", {
@@ -278,16 +302,14 @@ async def handle_chat_send(sid, data):
                     })
                     
                     # Publica resposta
-                    await publish_message(sio.emit, author="Bot 🤖", text=ai_response)
+                    await publish_message(sio.emit, author="Bot 💬", text=ai_response)
                 else:
-                    from bots.automations import publish_message
                     await publish_message(sio.emit, author="Bot", text="💭 Use: /ai <sua pergunta>")
                 return
             
             # Outros comandos síncronos
             reply = run_command(text)
             if reply:
-                from bots.automations import publish_message
                 await publish_message(sio.emit, author="Bot", text=reply)
             return
         
@@ -342,11 +364,64 @@ async def handle_chat_send(sid, data):
         await sio.emit("chat:delivered", {"id": message_id})
         print(f"📬 Evento 'delivered' emitido para mensagem {message_id}")
         
-        # 4) KEYWORD AUTOMATIONS (ex: "oi" -> resposta automática)
+        # 4) TRANSCRIÇÃO DE ÁUDIO PARA BOT
+        # Se for áudio, sempre transcreve e verifica se deve acionar o bot
+        transcription = None
+        print(f"🔍 Verificando áudio: type={message_create.type}, has_attachment={'attachment' in doc}")
+        if message_create.type == "audio" and ("attachment" in doc):
+            from bots.automations import publish_message
+            print(f"🎤 ÁUDIO DETECTADO! Transcrevendo de S3: {doc['attachment']['key']}")
+            
+            # Transcreve o áudio automaticamente
+            transcription = await transcribe_from_s3(
+                doc["attachment"]["key"],
+                doc["attachment"]["bucket"]
+            )
+            print(f"📝 Transcrição: {transcription[:100] if transcription else 'NONE'}...")
+            
+            # Se a transcrição teve sucesso, verifica se menciona o bot
+            if transcription and not transcription.startswith("["):  # Não é erro
+                # Verifica se a transcrição menciona o bot ou faz pergunta de IA
+                if is_ai_question(transcription):
+                    # Avisa que está processando
+                    await sio.emit("chat:typing", {
+                        "author": "Bot",
+                        "isTyping": True
+                    })
+                    
+                    # Simula pensamento
+                    await asyncio.sleep(0.8)
+                    
+                    # Remove menção @bot da transcrição antes de processar
+                    clean_text = clean_bot_mention(transcription)
+                    
+                    # Processa com ChatGPT
+                    ai_response = await ask_chatgpt(clean_text, user_id, author)
+                    
+                    # Simula digitação
+                    typing_time = len(ai_response) / 50
+                    typing_time = max(1.5, min(typing_time, 5.0))
+                    await asyncio.sleep(typing_time)
+                    
+                    # Remove indicador de digitação
+                    await sio.emit("chat:typing", {
+                        "author": "Bot",
+                        "isTyping": False
+                    })
+                    
+                    # Responde com a transcrição e a resposta
+                    response_text = f'🎤 _Áudio transcrito:_ "{transcription}"\n\n{ai_response}'
+                    await publish_message(sio.emit, author="Bot 💬", text=response_text)
+                    
+                    # Não continua para outras automações
+                    return
+        
+        # 5) KEYWORD AUTOMATIONS (ex: "oi" -> resposta automática)
         await handle_keyword_if_matches(sio.emit, text)
         
-        # 5) BOT DE IA (ex: "@bot qual a capital do Brasil?")
+        # 6) BOT DE IA (ex: "@bot qual a capital do Brasil?")
         if is_ai_question(text):
+            import asyncio
             from bots.automations import publish_message
             
             # Limpa menção ao bot
@@ -358,8 +433,17 @@ async def handle_chat_send(sid, data):
                 "isTyping": True
             })
             
-            # Processa com ChatGPT
-            ai_response = await ask_chatgpt(clean_text)
+            # Simula "pensamento" (0.5-1.5 segundos)
+            await asyncio.sleep(1.0)
+            
+            # Processa com ChatGPT (mantém contexto por user_id, passa nome do autor)
+            ai_response = await ask_chatgpt(clean_text, user_id, author)
+            
+            # Simula digitação realista (baseado no tamanho da resposta)
+            # ~50 caracteres por segundo (digitação rápida mas humana)
+            typing_time = len(ai_response) / 50
+            typing_time = max(1.5, min(typing_time, 5.0))  # Entre 1.5 e 5 segundos
+            await asyncio.sleep(typing_time)
             
             # Remove indicador de digitação
             await sio.emit("chat:typing", {
@@ -368,7 +452,7 @@ async def handle_chat_send(sid, data):
             })
             
             # Publica resposta
-            await publish_message(sio.emit, author="Bot 🤖", text=ai_response)
+            await publish_message(sio.emit, author="Bot 💬", text=ai_response)
         
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {e}")
@@ -437,10 +521,18 @@ class ConfirmUploadIn(BaseModel):
 async def confirm_upload(body: ConfirmUploadIn):
     # (Opcional) antivirus stub aqui
     from datetime import datetime, timezone
+    
+    # Detecta tipo de arquivo
+    file_type = "file"
+    if body.mimetype.startswith("image/"):
+        file_type = "image"
+    elif body.mimetype.startswith("audio/"):
+        file_type = "audio"
+    
     doc = {
         "author": body.author,
         "text": body.filename,
-        "type": "file" if not body.mimetype.startswith("image/") else "image",
+        "type": file_type,
         "status": "sent",
         "createdAt": datetime.now(timezone.utc),
         "attachment": {
@@ -462,6 +554,54 @@ async def confirm_upload(body: ConfirmUploadIn):
         "url": presign_get(body.key)  # URL GET assinada p/ exibição imediata
     }
     await sio.emit("chat:new-message", msg)
+    
+    # TRANSCRIÇÃO DE ÁUDIO (se aplicável)
+    if file_type == "audio":
+        from bots.automations import publish_message
+        import asyncio
+        
+        print(f"🎤 ÁUDIO DETECTADO no confirm_upload! Transcrevendo: {body.key}")
+        
+        # Transcreve o áudio automaticamente
+        transcription = await transcribe_from_s3(body.key, S3_BUCKET)
+        print(f"📝 Transcrição: {transcription[:100] if transcription else 'NONE'}...")
+        
+        # Se a transcrição teve sucesso, verifica se menciona o bot
+        if transcription and not transcription.startswith("["):  # Não é erro
+            # Verifica se a transcrição menciona o bot ou faz pergunta de IA
+            if is_ai_question(transcription):
+                print(f"🤖 Pergunta de IA detectada na transcrição!")
+                
+                # Avisa que está processando
+                await sio.emit("chat:typing", {
+                    "author": "Bot",
+                    "isTyping": True
+                })
+                
+                # Simula pensamento
+                await asyncio.sleep(0.8)
+                
+                # Remove menção @bot da transcrição antes de processar
+                clean_text = clean_bot_mention(transcription)
+                
+                # Processa com ChatGPT (usa author como user_id temporário)
+                ai_response = await ask_chatgpt(clean_text, body.author, body.author)
+                
+                # Simula digitação
+                typing_time = len(ai_response) / 50
+                typing_time = max(1.5, min(typing_time, 5.0))
+                await asyncio.sleep(typing_time)
+                
+                # Remove indicador de digitação
+                await sio.emit("chat:typing", {
+                    "author": "Bot",
+                    "isTyping": False
+                })
+                
+                # Responde com a transcrição e a resposta
+                response_text = f'🎤 _Áudio transcrito:_ "{transcription}"\n\n{ai_response}'
+                await publish_message(sio.emit, author="Bot 💬", text=response_text)
+    
     return {"ok": True, "message": msg}
 
 

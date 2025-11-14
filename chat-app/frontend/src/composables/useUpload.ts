@@ -2,7 +2,7 @@
 export type UploadGrant = { key: string; putUrl: string }
 export type ConfirmIn = { key: string; filename: string; mimetype: string; author: string }
 export type UploadMessage = {
-  id: string; author: string; text: string; type: 'image'|'file'; status: string;
+  id: string; author: string; text: string; type: 'image'|'file'|'audio'; status: string;
   timestamp: number; attachment?: any; url?: string
 }
 

@@ -20,7 +20,8 @@ s3 = boto3.client(
 
 ALLOWED = {
     "image/png","image/jpeg","image/webp","application/pdf",
-    "text/plain","application/zip","application/octet-stream"
+    "text/plain","application/zip","application/octet-stream",
+    "audio/webm","audio/ogg","audio/mpeg","audio/mp4","audio/wav"
 }
 
 def new_object_key(filename: str) -> str:

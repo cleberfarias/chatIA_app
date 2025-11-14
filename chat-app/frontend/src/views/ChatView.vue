@@ -58,9 +58,8 @@
               :type="item.type || 'text'"
               :attachment-url="item.url"
               :file-name="item.attachment?.filename || item.text"
-            >
-              {{ item.type === 'text' ? item.text : '' }}
-            </DSMessageBubble>
+              :text="item.type === 'text' ? item.text : ''"
+            />
           </div>
         </template>
 
@@ -96,6 +95,7 @@
         @submit="handleSendMessage"
         @typing="handleTyping"
         @emoji="() => {}"
+        @voice="showVoiceRecorder = true"
       >
         <template #attach-btn>
           <!-- Menu de Anexos estilo WhatsApp -->
@@ -120,6 +120,18 @@
         </template>
       </DSChatInput>
     </div>
+
+    <!-- GRAVADOR DE VOZ -->
+    <VoiceRecorder
+      v-model="showVoiceRecorder"
+      @audio-recorded="handleAudioRecorded"
+    />
+
+    <!-- GRAVADOR DE VOZ -->
+    <VoiceRecorder
+      v-model="showVoiceRecorder"
+      @audio-recorded="handleAudioRecorded"
+    />
 
     <!-- DIALOG PARA NOME DO USUÁRIO -->
     <v-dialog v-model="showNameDialog" max-width="400" persistent>
@@ -159,6 +171,7 @@ import DSChatInput from '../design-system/components/DSChatInput.vue';
 import TypingIndicator from '../components/TypingIndicator.vue';
 import DateSeparator from '../components/DateSeparator.vue';
 import AttachmentMenu from '../components/AttachmentMenu.vue';
+import VoiceRecorder from '../components/VoiceRecorder.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
@@ -174,6 +187,7 @@ const showNameDialog = ref(true);
 const isScrolledToBottom = ref(true);
 const lastScrollTop = ref(0);
 const showAttachmentMenu = ref(false);
+const showVoiceRecorder = ref(false);
 const apiBaseUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 const uploadingFile = ref(false);
 const uploadProgress = ref(0);
@@ -353,6 +367,18 @@ async function handleFileUpload(file: File) {
     console.error('❌ Erro no upload:', error);
     // TODO: Mostrar mensagem de erro ao usuário
   }
+}
+
+async function handleAudioRecorded(audioBlob: Blob) {
+  console.log('🎤 Áudio gravado:', audioBlob.size, 'bytes');
+  
+  // Converte o blob WebM para arquivo com nome
+  const timestamp = Date.now();
+  const audioFile = new File([audioBlob], `audio_${timestamp}.webm`, { 
+    type: 'audio/webm' 
+  });
+  
+  await handleFileUpload(audioFile);
 }
 </script>
 

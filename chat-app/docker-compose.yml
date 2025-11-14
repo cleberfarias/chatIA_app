@@ -42,6 +42,8 @@ services:
       - S3_BUCKET=chat-uploads
       - PUBLIC_BASE_URL=http://localhost:9000
       - MAX_UPLOAD_MB=15
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-3.5-turbo}
     depends_on:
       - mongo
       - minio
