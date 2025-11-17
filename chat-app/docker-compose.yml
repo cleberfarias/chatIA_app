@@ -93,6 +93,23 @@ services:
       "
     restart: on-failure
 
+  wppconnect:
+    image: wppconnect/server:latest
+    environment:
+      - SERVER_PORT=21465
+      - SESSIONS_DIR=/sessions
+      - LINK_PREVIEW=true
+      - SECRET_KEY=${WPP_WEBHOOK_SECRET:-super_secret_webhook}
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://api:3000/webhooks/wppconnect
+      - WEBHOOK_GLOBAL_SECRET=${WPP_WEBHOOK_SECRET:-super_secret_webhook}
+    volumes:
+      - ./wpp-sessions:/sessions
+    ports:
+      - "21465:21465"
+    depends_on:
+      - api
+
 volumes:
   mongo_data:
   minio_data:
