@@ -107,8 +107,16 @@ async def meta_send_message(channel: Channel, recipient: str, text: str) -> dict
                 "recipient": {"id": recipient},
                 "message": {"text": text}
             }
+            print(f"📤 Facebook - URL: {url}")
+            print(f"📤 Facebook - Body: {body}")
             r = await c.post(url, params=params, json=body)
-            r.raise_for_status()
+            
+            # Se der erro, mostra a resposta do Facebook
+            if r.status_code != 200:
+                error_detail = r.text
+                print(f"❌ Facebook Error Response: {error_detail}")
+                raise ValueError(f"Facebook API Error: {error_detail}")
+            
             return r.json()
 
         else:

@@ -28,7 +28,7 @@
           </template>
           
           <v-list>
-            <v-list-item @click="$emit('wpp-connect')">
+            <v-list-item @click="$emit('wppConnect')">
               <template v-slot:prepend>
                 <v-icon>mdi-qrcode</v-icon>
               </template>

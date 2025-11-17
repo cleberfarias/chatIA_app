@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from meta import meta_send_message
-from wpp import wpp_start_session, wpp_get_qr, wpp_send_text
+# Imports movidos para dentro das funções para evitar erros de inicialização
 
 router = APIRouter(prefix="/omni", tags=["omnichannel"])
 
@@ -34,6 +34,8 @@ async def omni_send(body: SendIn):
     - **facebook**: Facebook Messenger
     - **wppconnect**: WhatsApp device-based (POC)
     """
+    print(f"🔵 Omni Send - Canal: {body.channel}, Recipient: {body.recipient}")
+    
     try:
         # Importa sio aqui para evitar circular import
         from main import sio
@@ -70,6 +72,9 @@ async def omni_send(body: SendIn):
         return {"ok": True, "result": result}
         
     except Exception as e:
+        print(f"❌ Erro no omni_send: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(400, str(e))
 
 
@@ -83,24 +88,56 @@ class StartSessionIn(BaseModel):
 @router.post("/wpp/start")
 async def start_wpp_session(body: StartSessionIn):
     """
-    Inicia sessão WPPConnect (gera QR Code).
+    Inicia sessão WhatsApp via Selenium (QR Code capturado do WhatsApp Web).
     
     Use /wpp/qr para obter o QR Code gerado.
     """
+    from wpp import wpp_get_status
+    
     try:
-        return await wpp_start_session(body.session)
+        status_data = await wpp_get_status(body.session)
+        
+        if status_data.get("connected"):
+            return {
+                "status": "connected",
+                "message": "WhatsApp já está conectado"
+            }
+        
+        return {
+            "status": "initializing",
+            "message": "Aguarde o QR Code ser gerado..."
+        }
     except Exception as e:
-        raise HTTPException(400, str(e))
+        print(f"⚠️ WhatsApp Selenium não disponível: {e}")
+        raise HTTPException(503, "Serviço WhatsApp temporariamente indisponível")
 
 
 @router.get("/wpp/qr")
-async def get_wpp_qr(session: str):
+async def get_wpp_qr(session: str, check_containers: bool = False):
     """
-    Obtém QR Code da sessão WPPConnect.
+    Obtém QR Code real do WhatsApp (capturado via Selenium do WhatsApp Web).
     
+    Lê do MongoDB onde o Selenium salvou o screenshot.
     Escaneie com o WhatsApp para conectar.
+    
+    Args:
+        session: Nome da sessão (default: "default")
+        check_containers: Se True, verifica containers na primeira chamada
     """
+    from wpp import wpp_get_qr
+    
     try:
-        return await wpp_get_qr(session)
+        qr_data = await wpp_get_qr(session, check_containers)
+        
+        # Retorna estrutura compatível com o frontend
+        return {
+            "qr": qr_data.get("qr_code", ""),
+            "status": qr_data.get("status", "STARTING"),
+            "last_update": qr_data.get("last_update", ""),
+            "description": qr_data.get("description", ""),
+            "connected": qr_data.get("status") == "LOGGEDIN"
+        }
+    
     except Exception as e:
-        raise HTTPException(400, str(e))
+        print(f"⚠️ Erro ao buscar QR do Selenium: {e}")
+        raise HTTPException(503, f"Erro ao obter QR Code do WhatsApp: {str(e)}")

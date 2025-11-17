@@ -73,16 +73,31 @@ export async function startWppSession(
 }
 
 /**
- * Obtém QR code de uma sessão WPPConnect existente
+ * Obtém QR code de uma sessão WhatsApp
  * 
  * @param baseUrl - URL base da API
  * @param session - Nome da sessão
+ * @param check_containers - Se true, verifica status dos containers (primeira chamada)
  */
 export async function getWppQrCode(
   baseUrl: string,
-  session: string
-): Promise<{ qr: string }> {
-  const response = await fetch(`${baseUrl}/omni/wpp/qr?session=${session}`)
+  session: string,
+  check_containers: boolean = false
+): Promise<{ 
+  qr: string; 
+  connected?: boolean; 
+  message?: string;
+  status?: string;
+  last_update?: string;
+  description?: string;
+}> {
+  const params = new URLSearchParams({ session });
+  
+  if (check_containers) {
+    params.append('check_containers', 'true');
+  }
+  
+  const response = await fetch(`${baseUrl}/omni/wpp/qr?${params.toString()}`);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }))

@@ -274,10 +274,14 @@ async def webhook_meta_receive(request: Request):
             sender_id = msg.get("sender", {}).get("id")
             text_content = msg.get("message", {}).get("text")
             
-            if sender_id and text_content:
-                author = f"FB:{sender_id}"
-                await _persist_and_broadcast(author, text_content)
-                print(f"📩 Mensagem recebida via Facebook Messenger: {author}")
+            if sender_id:
+                print(f"🎯 PSID CAPTURADO: {sender_id}")
+                print(f"   Use este ID no Postman como 'recipient'")
+                
+                if text_content:
+                    author = f"FB:{sender_id}"
+                    await _persist_and_broadcast(author, text_content)
+                    print(f"📩 Mensagem recebida via Facebook Messenger: {author}")
         
         # Instagram e WhatsApp usam entry.changes[].value.messages[]
         for change in entry.get("changes", []):
