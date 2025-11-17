@@ -93,6 +93,26 @@ services:
       "
     restart: on-failure
 
+  # WPPConnect - WhatsApp Web (Device-based)
+  wppconnect:
+    build: ./wppconnect-server
+    container_name: chat-app-wppconnect
+    ports:
+      - "21465:21465"
+    environment:
+      - PORT=21465
+      - HOST=0.0.0.0
+      - SECRET_KEY=${WPP_WEBHOOK_SECRET:-mysecretkey}
+      - WEBHOOK_URL=http://api:3000/webhooks/wppconnect
+      - WEBHOOK_BY_EVENTS=true
+      - WEBHOOK_ALLOWED_EVENTS=qrcode-updated,session-statuschange,messages-received,messages-sent
+    volumes:
+      - wppconnect_data:/usr/src/wpp/tokens
+    restart: unless-stopped
+    depends_on:
+      - api
+
 volumes:
   mongo_data:
   minio_data:
+  wppconnect_data:

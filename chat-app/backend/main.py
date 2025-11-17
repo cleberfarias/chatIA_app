@@ -1,5 +1,5 @@
 import socketio
-from fastapi import FastAPI, Query, HTTPException, APIRouter
+from fastapi import FastAPI, Query, HTTPException, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 from database import messages_collection, db
@@ -121,6 +121,14 @@ async def delete_automation(id: str):
 # Registra router de automações
 app.include_router(automations_router)
 
+# Registra router omnichannel
+try:
+    from routers.omni import router as omni_router
+    app.include_router(omni_router)
+    print("✅ Router omnichannel carregado")
+except ImportError as e:
+    print(f"⚠️  Router omnichannel não encontrado: {e}")
+
 # Wrap com Socket.IO
 socket_app = socketio.ASGIApp(sio, app)
 
@@ -177,6 +185,179 @@ async def get_messages(
         "hasMore": len(docs) == limit  # Indica se há mais mensagens para paginação
     }
 
+
+# ============================================================================
+# WEBHOOKS - Recebimento de mensagens externas
+# ============================================================================
+
+async def _persist_and_broadcast(author: str, text: str):
+    """
+    Helper para persistir mensagem no MongoDB e emitir via Socket.IO.
+    Evita duplicação de código entre diferentes webhooks.
+    """
+    # Cria documento
+    doc = {
+        "_id": ObjectId(),
+        "author": author,
+        "text": text,
+        "type": "text",
+        "status": "delivered",
+        "createdAt": datetime.now()
+    }
+    
+    # Persiste no MongoDB
+    await messages_collection.insert_one(doc)
+    
+    # Emite via Socket.IO para todos os clientes conectados
+    await sio.emit("chat:new-message", {
+        "id": str(doc["_id"]),
+        "author": author,
+        "text": text,
+        "type": "text",
+        "status": "delivered",
+        "timestamp": int(doc["createdAt"].timestamp() * 1000)
+    })
+
+
+@app.get("/webhooks/meta")
+async def webhook_meta_verify(
+    mode: str = Query(..., alias="hub.mode"),
+    challenge: str = Query(..., alias="hub.challenge"),
+    verify_token: str = Query(..., alias="hub.verify_token")
+):
+    """
+    Webhook GET para verificação do Meta (WhatsApp Cloud, Instagram, Facebook).
+    Usado durante configuração do webhook no Meta Developer Console.
+    """
+    import os
+    
+    META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "")
+    
+    if mode == "subscribe" and verify_token == META_VERIFY_TOKEN:
+        print("✅ Webhook Meta verificado com sucesso")
+        # Meta espera o challenge como resposta (pode ser int ou str)
+        return int(challenge) if challenge.isdigit() else challenge
+    
+    print(f"❌ Webhook Meta: verificação falhou (mode={mode}, token válido={verify_token == META_VERIFY_TOKEN})")
+    raise HTTPException(status_code=403, detail="Verification failed")
+
+
+@app.post("/webhooks/meta")
+async def webhook_meta_receive(request: Request):
+    """
+    Webhook POST para receber mensagens do Meta (WhatsApp Cloud, Instagram, Facebook).
+    Verifica assinatura HMAC antes de processar.
+    """
+    # Obtém corpo bruto para verificação de assinatura
+    raw_body = await request.body()
+    signature_header = request.headers.get("X-Hub-Signature-256")
+    
+    # Verifica assinatura HMAC
+    try:
+        from meta import verify_meta_signature
+        if not verify_meta_signature(raw_body, signature_header):
+            raise HTTPException(status_code=403, detail="Invalid signature")
+    except ImportError:
+        print("⚠️  meta.py não encontrado, pulando verificação de assinatura")
+    
+    # Parse JSON
+    try:
+        data = await request.json()
+    except Exception as e:
+        print(f"❌ Erro ao parsear JSON do webhook Meta: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # Processa entradas (pode haver múltiplas)
+    for entry in data.get("entry", []):
+        # Messenger usa entry.messaging[]
+        for msg in entry.get("messaging", []):
+            sender_id = msg.get("sender", {}).get("id")
+            text_content = msg.get("message", {}).get("text")
+            
+            if sender_id and text_content:
+                author = f"FB:{sender_id}"
+                await _persist_and_broadcast(author, text_content)
+                print(f"📩 Mensagem recebida via Facebook Messenger: {author}")
+        
+        # Instagram e WhatsApp usam entry.changes[].value.messages[]
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            for msg in value.get("messages", []):
+                sender = msg.get("from")  # Número ou ID
+                text_content = msg.get("text", {}).get("body")
+                
+                if sender and text_content:
+                    # Detecta plataforma pelo tipo de mensagem ou contexto
+                    # Por simplicidade, usa prefixo genérico (pode melhorar detectando metadata)
+                    platform = change.get("field", "unknown")
+                    if platform == "messages":  # WhatsApp ou Instagram
+                        # Tenta detectar se é WhatsApp (número) ou Instagram (ID alfanumérico)
+                        if sender.isdigit():
+                            author = f"WA:{sender}"
+                            print(f"📩 Mensagem recebida via WhatsApp Cloud: {author}")
+                        else:
+                            author = f"IG:{sender}"
+                            print(f"📩 Mensagem recebida via Instagram: {author}")
+                    else:
+                        author = f"{platform}:{sender}"
+                        print(f"📩 Mensagem recebida via Meta ({platform}): {author}")
+                    
+                    await _persist_and_broadcast(author, text_content)
+    
+    return {"status": "ok"}
+
+
+@app.post("/webhooks/wppconnect")
+async def webhook_wppconnect_receive(request: Request):
+    """
+    Webhook POST para receber mensagens do WPPConnect (WhatsApp device-based).
+    Verifica assinatura HMAC customizada antes de processar.
+    """
+    import os
+    import hmac
+    import hashlib
+    
+    # Obtém corpo bruto e assinatura
+    raw_body = await request.body()
+    signature_header = request.headers.get("x-webhook-signature")
+    
+    # Verifica assinatura HMAC (se WPP_WEBHOOK_SECRET estiver configurado)
+    WPP_WEBHOOK_SECRET = os.getenv("WPP_WEBHOOK_SECRET", "")
+    if WPP_WEBHOOK_SECRET and signature_header:
+        expected_signature = hmac.new(
+            WPP_WEBHOOK_SECRET.encode(),
+            raw_body,
+            hashlib.sha256
+        ).hexdigest()
+        
+        if not hmac.compare_digest(signature_header, expected_signature):
+            print("❌ Webhook WPPConnect: assinatura inválida")
+            raise HTTPException(status_code=403, detail="Invalid signature")
+    
+    # Parse JSON
+    try:
+        data = await request.json()
+    except Exception as e:
+        print(f"❌ Erro ao parsear JSON do webhook WPPConnect: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # WPPConnect envia: { event: "message", data: { from, fromName, contentText, body, ... } }
+    if data.get("event") == "message":
+        msg_data = data.get("data", {})
+        sender_name = msg_data.get("fromName") or msg_data.get("from", "unknown")
+        text_content = msg_data.get("contentText") or msg_data.get("body", "")
+        
+        if text_content:
+            author = f"WA(dev):{sender_name}"
+            await _persist_and_broadcast(author, text_content)
+            print(f"📩 Mensagem recebida via WPPConnect: {author}")
+    
+    return {"status": "ok"}
+
+
+# ============================================================================
+# SOCKET.IO - Eventos de tempo real
+# ============================================================================
 
 @sio.event
 async def connect(sid, environ, auth):

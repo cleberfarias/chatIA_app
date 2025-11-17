@@ -49,3 +49,6 @@ tmp/
 
 # Backup folders
 backend-nodejs-backup/
+
+# WPPConnect Server (clonado)
+wppconnect-server/

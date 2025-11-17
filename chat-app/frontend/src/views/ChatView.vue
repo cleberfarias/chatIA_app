@@ -7,7 +7,8 @@
         :online="chatStore.connected"
         :typing="Object.keys(chatStore.isTyping).length > 0"
         @search="() => {}"
-        @menu="handleLogout"
+        @wpp-connect="showWppConnectDialog = true"
+        @logout="handleLogout"
       />
     </div>
 
@@ -159,6 +160,9 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog de Conexão WPPConnect -->
+    <WppConnectDialog v-model="showWppConnectDialog" session="default" />
   </div>
 </template>
 
@@ -172,6 +176,7 @@ import TypingIndicator from '../components/TypingIndicator.vue';
 import DateSeparator from '../components/DateSeparator.vue';
 import AttachmentMenu from '../components/AttachmentMenu.vue';
 import VoiceRecorder from '../components/VoiceRecorder.vue';
+import WppConnectDialog from '../components/WppConnectDialog.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
@@ -188,6 +193,7 @@ const isScrolledToBottom = ref(true);
 const lastScrollTop = ref(0);
 const showAttachmentMenu = ref(false);
 const showVoiceRecorder = ref(false);
+const showWppConnectDialog = ref(false);
 const apiBaseUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 const uploadingFile = ref(false);
 const uploadProgress = ref(0);

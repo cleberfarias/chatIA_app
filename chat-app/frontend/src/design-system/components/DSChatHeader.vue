@@ -20,7 +20,29 @@
 
       <div class="d-flex align-center flex-shrink-0">
         <v-btn icon="mdi-magnify" color="white" variant="text" @click="$emit('search')" />
-        <v-btn icon="mdi-dots-vertical" color="white" variant="text" @click="$emit('menu')" />
+        
+        <!-- Menu com opções -->
+        <v-menu>
+          <template v-slot:activator="{ props }">
+            <v-btn icon="mdi-dots-vertical" color="white" variant="text" v-bind="props" />
+          </template>
+          
+          <v-list>
+            <v-list-item @click="$emit('wpp-connect')">
+              <template v-slot:prepend>
+                <v-icon>mdi-qrcode</v-icon>
+              </template>
+              <v-list-item-title>Conectar WhatsApp</v-list-item-title>
+            </v-list-item>
+            
+            <v-list-item @click="$emit('logout')">
+              <template v-slot:prepend>
+                <v-icon>mdi-logout</v-icon>
+              </template>
+              <v-list-item-title>Sair</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
       </div>
     </div>
   </v-app-bar>
@@ -45,7 +67,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 defineEmits<{
   search: [];
-  menu: [];
+  wppConnect: [];
+  logout: [];
 }>();
 
 const initials = computed(() => {
