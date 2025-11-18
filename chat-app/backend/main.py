@@ -408,7 +408,9 @@ async def disconnect(sid):
     print(f"🔌 Cliente desconectado: {sid}")
     # Remove da lista de sessões ativas
     if sid in active_sessions:
+        user_id = active_sessions[sid]
         del active_sessions[sid]
+        print(f"👤 Usuário {user_id} desconectado")
 
 # Evento: chat:typing Usuário está digitando
 @sio.on("chat:typing")
@@ -431,6 +433,29 @@ async def handle_typing(sid, data):
         
     except Exception as e:
         print(f"❌ Erro chat:typing: {e}")
+
+
+@sio.on("chat:mark-read")
+async def handle_mark_read(sid, data):
+    """Marca mensagens como lidas e notifica outros clientes"""
+    try:
+        environ = sio.get_environ(sid)
+        user_id = environ.get("user_id", "anonymous")
+        
+        message_ids = data.get("ids", [])
+        if not message_ids:
+            return
+        
+        # Emite evento de leitura para todos os clientes (exceto quem marcou)
+        await sio.emit("chat:read", {
+            "ids": message_ids,
+            "readBy": user_id
+        }, skip_sid=sid)
+        
+        print(f"👁️ Mensagens marcadas como lidas por {user_id}: {len(message_ids)} msgs")
+        
+    except Exception as e:
+        print(f"❌ Erro chat:mark-read: {e}")
         
         
 @sio.on("chat:send")
@@ -550,14 +575,17 @@ async def handle_chat_send(sid, data):
             "status": "sent",
             "timestamp": response["timestamp"]
         }, room=sid)
-        print(f"📤 ACK enviado para {sid} (tempId: {temp_id})")
+        print(f"📤 ACK enviado para {sid} (tempId: {temp_id} → {message_id})")
         
-        # 2. Envia broadcast para todos os clientes
+        # 2. Envia broadcast para todos os clientes (exceto remetente)
         await sio.emit("chat:new-message", response, skip_sid=sid)
+        print(f"📨 Mensagem broadcast para todos (exceto {sid})")
         
-        # 3. Emite 'delivered' para todos
-        await sio.emit("chat:delivered", {"id": message_id})
-        print(f"📬 Evento 'delivered' emitido para mensagem {message_id}")
+        # 3. Emite 'delivered' para o remetente após ~200ms (simula latência de rede)
+        import asyncio
+        await asyncio.sleep(0.2)
+        await sio.emit("chat:delivered", {"id": message_id}, room=sid)
+        print(f"📬 Status 'delivered' enviado para {sid}")
         
         # 4) TRANSCRIÇÃO DE ÁUDIO PARA BOT
         # Se for áudio, sempre transcreve e verifica se deve acionar o bot
