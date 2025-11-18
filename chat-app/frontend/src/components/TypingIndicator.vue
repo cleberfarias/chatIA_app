@@ -39,6 +39,9 @@ const typingText = computed(() => {
 <style scoped>
 .typing-indicator {
   animation: fadeIn 0.3s ease-in-out;
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .typing-bubble {

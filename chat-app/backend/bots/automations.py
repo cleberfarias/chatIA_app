@@ -17,7 +17,10 @@ async def publish_message(
     sio_emit: Callable[[str, dict[str, Any]], Any],
     author: str,
     text: str,
-    type_: str = "text"
+    type_: str = "text",
+    user_id: str = None,  # 🆕 ID do usuário que chamou o bot
+    contact_id: str = None,  # 🆕 ID do contato (para conversas 1:1)
+    target_sid: str = None  # 🆕 SID específico para enviar (ao invés de broadcast)
 ) -> None:
     """
     Publica uma mensagem no chat e persiste no banco.
@@ -27,6 +30,9 @@ async def publish_message(
         author: Nome do autor da mensagem
         text: Conteúdo da mensagem
         type_: Tipo da mensagem (padrão: "text")
+        user_id: ID do usuário (para mensagens do bot = None, broadcast)
+        contact_id: ID do contato na conversa individual
+        target_sid: SID específico do usuário (para mensagens direcionadas)
     """
     now = datetime.now(timezone.utc)
     doc = {
@@ -36,16 +42,33 @@ async def publish_message(
         "status": "sent",
         "createdAt": now
     }
+    # Adiciona userId e contactId se fornecidos
+    if user_id:
+        doc["userId"] = user_id
+    if contact_id:
+        doc["contactId"] = contact_id
+        
     result = await messages_col.insert_one(doc)
     
-    await sio_emit("chat:new-message", {
+    response = {
         "id": str(result.inserted_id),
         "author": author,
         "text": text,
         "type": type_,
         "status": "sent",
         "timestamp": int(now.timestamp() * 1000)
-    })
+    }
+    # Adiciona userId e contactId na resposta se fornecidos
+    if user_id:
+        response["userId"] = user_id
+    if contact_id:
+        response["contactId"] = contact_id
+    
+    # Envia diretamente para o usuário específico ou faz broadcast
+    if target_sid:
+        await sio_emit("chat:new-message", response, room=target_sid)
+    else:
+        await sio_emit("chat:new-message", response)
 
 
 async def _create_cron_job(

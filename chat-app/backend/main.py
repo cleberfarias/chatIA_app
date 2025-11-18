@@ -33,6 +33,9 @@ sio = socketio.AsyncServer(
     engineio_logger=True
 )
 
+# 🤖 Sessões ativas com o Guru (user_id -> bool)
+guru_sessions = {}
+
 # Importa e registra rotas de autenticação (se existir o arquivo users.py)
 try:
     from users import router as auth_router
@@ -522,6 +525,55 @@ async def handle_chat_send(sid, data):
         # 1) COMANDOS (ex: /help, /echo, /time, /ai, /limpar)
         if is_command(text):
             from bots.automations import publish_message
+            from bots.ai_bot import set_user_mode, get_user_mode, generate_conversation_summary
+            
+            # Comando /ajuda - Lista comandos disponíveis
+            if text.lower() in ["/ajuda", "/help"]:
+                help_text = """🧠 **Comandos do Guru:**
+
+📝 **Conversa:**
+• `@guru` - Iniciar sessão (não precisa mencionar depois)
+• `tchau` ou `sair` - Encerrar sessão
+• `/ai <pergunta>` - Pergunta direta
+
+🎨 **Personalização:**
+• `/modo <casual|profissional|tecnico>` - Mudar estilo
+• `/contexto` - Ver histórico de mensagens
+
+🛠️ **Utilitários:**
+• `/limpar` - Limpar histórico
+• `/resumo` - Resumo da conversa
+• `/ajuda` - Esta mensagem"""
+                await publish_message(sio.emit, author="Guru 📚", text=help_text, user_id=user_id, target_sid=sid)
+                return
+            
+            # Comando /contexto - Mostra quantidade de mensagens no histórico
+            if text.lower() == "/contexto":
+                count = get_conversation_count(user_id)
+                mode = get_user_mode(user_id)
+                mode_emoji = {"casual": "😎", "profissional": "💼", "tecnico": "🔧"}
+                context_text = f"""📊 **Status da Conversa:**
+
+💬 Mensagens no histórico: {count}/10
+🎭 Modo atual: {mode.title()} {mode_emoji.get(mode, '')}
+🧠 Memória: {'Ativa' if count > 0 else 'Vazia'}
+
+_Quanto mais conversamos, melhor eu te entendo!_ ✨"""
+                await publish_message(sio.emit, author="Guru 📊", text=context_text, user_id=user_id, target_sid=sid)
+                return
+            
+            # Comando /modo - Altera modo de personalidade
+            if text.lower().startswith("/modo "):
+                new_mode = text[6:].strip().lower()
+                result = set_user_mode(user_id, new_mode)
+                await publish_message(sio.emit, author="Guru 🎭", text=result, user_id=user_id, target_sid=sid)
+                return
+            
+            # Comando /resumo - Gera resumo da conversa
+            if text.lower() == "/resumo":
+                summary = generate_conversation_summary(user_id)
+                await publish_message(sio.emit, author="Guru 📝", text=summary, user_id=user_id, target_sid=sid)
+                return
             
             # Comando /limpar - Limpa histórico de conversa
             if text.lower() in ["/limpar", "/clear"]:
@@ -529,8 +581,10 @@ async def handle_chat_send(sid, data):
                 count = get_conversation_count(user_id)
                 await publish_message(
                     sio.emit, 
-                    author="Bot 🧹", 
-                    text=f"✅ Histórico de conversa limpo! ({count} mensagens removidas)\nPodemos começar uma nova conversa do zero."
+                    author="Guru 🧹", 
+                    text=f"✅ Histórico de conversa limpo! ({count} mensagens removidas)\nPodemos começar uma nova conversa do zero.",
+                    user_id=user_id,
+                    target_sid=sid
                 )
                 return
             
@@ -540,11 +594,11 @@ async def handle_chat_send(sid, data):
                 if question:
                     import asyncio
                     
-                    # Envia indicador de digitação
+                    # Envia indicador de digitação (direto para o usuário)
                     await sio.emit("chat:typing", {
-                        "author": "Bot",
+                        "author": "Guru",
                         "isTyping": True
-                    })
+                    }, room=sid)
                     
                     # Simula "pensamento" (0.5-1.5 segundos)
                     await asyncio.sleep(0.8)
@@ -558,165 +612,255 @@ async def handle_chat_send(sid, data):
                     typing_time = max(1.0, min(typing_time, 4.0))  # Entre 1 e 4 segundos
                     await asyncio.sleep(typing_time)
                     
-                    # Remove indicador de digitação
+                    # Remove indicador de digitação (direto para o usuário)
                     await sio.emit("chat:typing", {
-                        "author": "Bot",
+                        "author": "Guru",
                         "isTyping": False
-                    })
+                    }, room=sid)
                     
                     # Publica resposta
-                    await publish_message(sio.emit, author="Bot 💬", text=ai_response)
+                    await publish_message(sio.emit, author="Guru 🧠", text=ai_response, user_id=user_id, target_sid=sid)
                 else:
-                    await publish_message(sio.emit, author="Bot", text="💭 Use: /ai <sua pergunta>")
+                    await publish_message(sio.emit, author="Guru", text="💭 Use: /ai <sua pergunta>", user_id=user_id, target_sid=sid)
                 return
             
             # Outros comandos síncronos
             reply = run_command(text)
             if reply:
-                await publish_message(sio.emit, author="Bot", text=reply)
+                await publish_message(sio.emit, author="Guru", text=reply, user_id=user_id, target_sid=sid)
             return
         
-        # 2) PERSISTIR MENSAGEM NORMAL
-        # Validação com Pydantic
-        message_create = MessageCreate(**data)
+        # 🧠 VERIFICA SE É INTERAÇÃO COM GURU (não salva essas mensagens)
+        text_lower = text.lower().strip()
+        in_guru_session = guru_sessions.get(user_id, False)
+        is_guru_mention = text_lower.startswith("@guru")
+        is_guru_exit = text_lower in ["tchau", "sair"]
+        is_ai_query = is_ai_question(text)
         
-        # Cria documento para MongoDB
-        now = datetime.now(timezone.utc)
-        doc = {
-            "author": message_create.author,
-            "text": message_create.text,
-            "status": message_create.status,
-            "type": message_create.type,
-            "userId": user_id,  # Adiciona ID do usuário autenticado
-            "contactId": message_create.contactId,  # 🆕 ID do contato (conversa individual)
-            "createdAt": now
-        }
-        
-        # Insere no MongoDB
-        result = await messages_collection.insert_one(doc)
-        message_id = str(result.inserted_id)
-        print(f"💾 Mensagem salva no MongoDB: {message_id} (user: {user_id})")
-        
-        # Prepara resposta
-        response = {
-            "id": message_id,
-            "author": doc["author"],
-            "text": doc["text"],
-            "timestamp": int(doc["createdAt"].timestamp() * 1000),
-            "status": doc["status"],
-            "type": doc["type"],
-            "userId": user_id,  # 🆕 ID do remetente (quem enviou)
-            "contactId": doc.get("contactId")  # 🆕 ID do destinatário (para quem foi enviado)
-        }
-        
-        # Adiciona attachment se existir
-        if "attachment" in doc:
-            response["attachment"] = doc["attachment"]
-            response["url"] = presign_get(doc["attachment"]["key"])
-        
-        # 1. Envia ACK para o remetente (optimistic UI)
-        await sio.emit("chat:ack", {
-            "tempId": temp_id,
-            "id": message_id,
-            "status": "sent",
-            "timestamp": response["timestamp"]
-        }, room=sid)
-        print(f"📤 ACK enviado para {sid} (tempId: {temp_id} → {message_id})")
-        
-        # 2. Envia mensagem para o destinatário específico (se contactId fornecido)
-        if message_create.contactId:
-            contact_sid = user_sessions.get(message_create.contactId)
-            if contact_sid:
-                # Destinatário está online - envia apenas para ele
-                await sio.emit("chat:new-message", response, room=contact_sid)
-                print(f"📨 Mensagem enviada para contato {message_create.contactId} (sid: {contact_sid})")
-            else:
-                # Destinatário offline - mensagem ficará no banco para quando ele logar
-                print(f"📪 Contato {message_create.contactId} está offline - mensagem salva no banco")
+        # Se for qualquer interação com Guru, pula todo o processamento de mensagem normal
+        if in_guru_session or is_guru_mention or is_guru_exit or is_ai_query:
+            print(f"🧠 Mensagem para Guru detectada - pulando persistência no banco")
+            # Continua para processamento do Guru abaixo (não retorna aqui)
         else:
-            # Sem contactId - broadcast para todos (compatibilidade com sistema antigo)
-            await sio.emit("chat:new-message", response, skip_sid=sid)
-            print(f"📨 Mensagem broadcast para todos (exceto {sid})")
-        
-        print(f"🔍 Response data: contactId={response.get('contactId')}, author={response.get('author')}")
-        
-        # 3. Emite 'delivered' para o remetente após ~200ms (simula latência de rede)
-        import asyncio
-        await asyncio.sleep(0.2)
-        await sio.emit("chat:delivered", {"id": message_id}, room=sid)
-        print(f"📬 Status 'delivered' enviado para {sid}")
-        
-        # 4) TRANSCRIÇÃO DE ÁUDIO PARA BOT
-        # Se for áudio, sempre transcreve e verifica se deve acionar o bot
-        transcription = None
-        print(f"🔍 Verificando áudio: type={message_create.type}, has_attachment={'attachment' in doc}")
-        if message_create.type == "audio" and ("attachment" in doc):
-            from bots.automations import publish_message
-            print(f"🎤 ÁUDIO DETECTADO! Transcrevendo de S3: {doc['attachment']['key']}")
+            # 2) PERSISTIR MENSAGEM NORMAL (apenas mensagens entre usuários)
+            # Validação com Pydantic
+            message_create = MessageCreate(**data)
             
-            # Transcreve o áudio automaticamente
-            transcription = await transcribe_from_s3(
-                doc["attachment"]["key"],
-                doc["attachment"]["bucket"]
-            )
-            print(f"📝 Transcrição: {transcription[:100] if transcription else 'NONE'}...")
+            # Cria documento para MongoDB
+            now = datetime.now(timezone.utc)
+            doc = {
+                "author": message_create.author,
+                "text": message_create.text,
+                "status": message_create.status,
+                "type": message_create.type,
+                "userId": user_id,  # Adiciona ID do usuário autenticado
+                "contactId": message_create.contactId,  # 🆕 ID do contato (conversa individual)
+                "createdAt": now
+            }
             
-            # Se a transcrição teve sucesso, verifica se menciona o bot
-            if transcription and not transcription.startswith("["):  # Não é erro
-                # Verifica se a transcrição menciona o bot ou faz pergunta de IA
-                if is_ai_question(transcription):
-                    # Avisa que está processando
-                    await sio.emit("chat:typing", {
-                        "author": "Bot",
-                        "isTyping": True
-                    })
-                    
-                    # Simula pensamento
-                    await asyncio.sleep(0.8)
-                    
-                    # Remove menção @bot da transcrição antes de processar
-                    clean_text = clean_bot_mention(transcription)
-                    
-                    # Processa com ChatGPT
-                    ai_response = await ask_chatgpt(clean_text, user_id, author)
-                    
-                    # Simula digitação
-                    typing_time = len(ai_response) / 50
-                    typing_time = max(1.5, min(typing_time, 5.0))
-                    await asyncio.sleep(typing_time)
-                    
-                    # Remove indicador de digitação
-                    await sio.emit("chat:typing", {
-                        "author": "Bot",
-                        "isTyping": False
-                    })
-                    
-                    # Responde com a transcrição e a resposta
-                    response_text = f'🎤 _Áudio transcrito:_ "{transcription}"\n\n{ai_response}'
-                    await publish_message(sio.emit, author="Bot 💬", text=response_text)
-                    
-                    # Não continua para outras automações
-                    return
+            # Insere no MongoDB
+            result = await messages_collection.insert_one(doc)
+            message_id = str(result.inserted_id)
+            print(f"💾 Mensagem salva no MongoDB: {message_id} (user: {user_id})")
+            
+            # Prepara resposta
+            response = {
+                "id": message_id,
+                "author": doc["author"],
+                "text": doc["text"],
+                "timestamp": int(doc["createdAt"].timestamp() * 1000),
+                "status": doc["status"],
+                "type": doc["type"],
+                "userId": user_id,  # 🆕 ID do remetente (quem enviou)
+                "contactId": doc.get("contactId")  # 🆕 ID do destinatário (para quem foi enviado)
+            }
+            
+            # Adiciona attachment se existir
+            if "attachment" in doc:
+                response["attachment"] = doc["attachment"]
+                response["url"] = presign_get(doc["attachment"]["key"])
+            
+            # 1. Envia ACK para o remetente (optimistic UI)
+            await sio.emit("chat:ack", {
+                "tempId": temp_id,
+                "id": message_id,
+                "status": "sent",
+                "timestamp": response["timestamp"]
+            }, room=sid)
+            print(f"📤 ACK enviado para {sid} (tempId: {temp_id} → {message_id})")
+            
+            # 2. Envia mensagem para o destinatário específico (se contactId fornecido)
+            if message_create.contactId:
+                contact_sid = user_sessions.get(message_create.contactId)
+                if contact_sid:
+                    # Destinatário está online - envia apenas para ele
+                    await sio.emit("chat:new-message", response, room=contact_sid)
+                    print(f"📨 Mensagem enviada para contato {message_create.contactId} (sid: {contact_sid})")
+                else:
+                    # Destinatário offline - mensagem ficará no banco para quando ele logar
+                    print(f"📪 Contato {message_create.contactId} está offline - mensagem salva no banco")
+            else:
+                # Sem contactId - broadcast para todos (compatibilidade com sistema antigo)
+                await sio.emit("chat:new-message", response, skip_sid=sid)
+                print(f"📨 Mensagem broadcast para todos (exceto {sid})")
+            
+            print(f"🔍 Response data: contactId={response.get('contactId')}, author={response.get('author')}")
+            
+            # 3. Emite 'delivered' para o remetente após ~200ms (simula latência de rede)
+            import asyncio
+            await asyncio.sleep(0.2)
+            await sio.emit("chat:delivered", {"id": message_id}, room=sid)
+            print(f"📬 Status 'delivered' enviado para {sid}")
+            
+            # 4) TRANSCRIÇÃO DE ÁUDIO PARA BOT
+            # Se for áudio, sempre transcreve e verifica se deve acionar o bot
+            transcription = None
+            print(f"🔍 Verificando áudio: type={message_create.type}, has_attachment={'attachment' in doc}")
+            if message_create.type == "audio" and ("attachment" in doc):
+                from bots.automations import publish_message
+                print(f"🎤 ÁUDIO DETECTADO! Transcrevendo de S3: {doc['attachment']['key']}")
+                
+                # Transcreve o áudio automaticamente
+                transcription = await transcribe_from_s3(
+                    doc["attachment"]["key"],
+                    doc["attachment"]["bucket"]
+                )
+                print(f"📝 Transcrição: {transcription[:100] if transcription else 'NONE'}...")
+                
+                # Se a transcrição teve sucesso, verifica se menciona o bot
+                if transcription and not transcription.startswith("["):  # Não é erro
+                    # Verifica se a transcrição menciona o bot ou faz pergunta de IA
+                    if is_ai_question(transcription):
+                        # Avisa que está processando (direto para o usuário)
+                        await sio.emit("chat:typing", {
+                            "author": "Guru",
+                            "isTyping": True
+                        }, room=sid)
+                        
+                        # Simula pensamento
+                        await asyncio.sleep(0.8)
+                        
+                        # Remove menção @bot da transcrição antes de processar
+                        clean_text = clean_bot_mention(transcription)
+                        
+                        # Processa com ChatGPT
+                        ai_response = await ask_chatgpt(clean_text, user_id, author)
+                        
+                        # Simula digitação
+                        typing_time = len(ai_response) / 50
+                        typing_time = max(1.5, min(typing_time, 5.0))
+                        await asyncio.sleep(typing_time)
+                        
+                        # Remove indicador de digitação (direto para o usuário)
+                        await sio.emit("chat:typing", {
+                            "author": "Guru",
+                            "isTyping": False
+                        }, room=sid)
+                        
+                        # Responde com a transcrição e a resposta
+                        response_text = f'🎤 _Áudio transcrito:_ "{transcription}"\n\n{ai_response}'
+                        await publish_message(sio.emit, author="Guru 🧠", text=response_text, user_id=user_id, target_sid=sid)
+                        
+                        # Não continua para outras automações
+                        return
+            
+            # Finaliza processamento de mensagem normal
+            return
         
         # 5) KEYWORD AUTOMATIONS (ex: "oi" -> resposta automática)
         await handle_keyword_if_matches(sio.emit, text)
         
-        # 6) BOT DE IA (ex: "@bot qual a capital do Brasil?")
-        if is_ai_question(text):
-            import asyncio
+        # 6) SESSÃO ATIVA COM GURU
+        # Comando para SAIR da sessão: @guru tchau, @guru sair, sair, tchau
+        if text_lower in ["@guru tchau", "@guru sair", "tchau", "sair"] and user_id in guru_sessions:
+            guru_sessions[user_id] = False
             from bots.automations import publish_message
             
-            # Limpa menção ao bot
+            # Mensagem de despedida (sempre inclui 👋 para detecção no frontend)
+            farewell_text = "👋 Até logo! Foi um prazer conversar com você. Estou aqui quando precisar! 🚀"
+            
+            await publish_message(
+                sio.emit, 
+                author="Guru 👋", 
+                text=farewell_text,
+                user_id=user_id,
+                target_sid=sid
+            )
+            return
+        
+        # Comando para INICIAR sessão: @guru (sem tchauu/sair)
+        if text_lower.startswith("@guru") and text_lower not in ["@guru tchau", "@guru sair"]:
+            if user_id not in guru_sessions or not guru_sessions[user_id]:
+                guru_sessions[user_id] = True
+                from bots.automations import publish_message
+                from bots.ai_bot import get_user_mode
+                import random
+                
+                # Se for só "@guru", saudação personalizada
+                if text_lower == "@guru":
+                    mode = get_user_mode(user_id)
+                    greetings = {
+                        "casual": [
+                            "E aí! Bora conversar? Manda a real, sem frescura! 😎",
+                            "Opa! Tô aqui, mano. Pode perguntar o que quiser! 🚀",
+                            "Salve! Qual é a boa? Tô pronto pra te ajudar! 💪"
+                        ],
+                        "profissional": [
+                            "Olá! Estou à disposição para ajudá-lo(a). Como posso ser útil hoje? 💼",
+                            "Bom dia! Pronto para auxiliá-lo(a). O que precisa? 🎯",
+                            "Olá! Seja bem-vindo(a). Em que posso colaborar? 📋"
+                        ],
+                        "tecnico": [
+                            "Sistema iniciado. Pronto para processar suas consultas técnicas. 🔧",
+                            "Sessão ativada. Aguardando input para análise detalhada. 💻",
+                            "Interface pronta. Pode enviar suas queries técnicas. ⚙️"
+                        ]
+                    }
+                    
+                    greeting = random.choice(greetings.get(mode, greetings["casual"]))
+                    instructions = "\\n\\n💡 _Agora pode falar direto comigo, sem mencionar @guru a cada mensagem._\\n👋 _Para sair: 'tchau' ou 'sair'_"
+                    
+                    await publish_message(
+                        sio.emit,
+                        author="Guru 🧠",
+                        text=greeting + instructions,
+                        user_id=user_id,
+                        target_sid=sid
+                    )
+                    return
+        
+        # Durante sessão ativa, todas mensagens vão pro Guru (exceto comandos)
+        in_guru_session = guru_sessions.get(user_id, False)
+        
+        # 7) PERGUNTA PARA O GURU (via @guru ou durante sessão ativa)
+        if is_ai_question(text) or in_guru_session:
+            import asyncio
+            from bots.automations import publish_message
+            import random
+            
+            # Limpa menção ao guru (se houver)
             clean_text = clean_bot_mention(text)
             
-            # Envia indicador de digitação
+            # Envia indicador de digitação (direto para o usuário)
             await sio.emit("chat:typing", {
-                "author": "Bot",
+                "author": "Guru",
                 "isTyping": True
-            })
+            }, room=sid)
             
-            # Simula "pensamento" (0.5-1.5 segundos)
-            await asyncio.sleep(1.0)
+            # 🧠 Tempo de pensamento variável baseado na complexidade
+            question_length = len(clean_text)
+            has_code_words = any(word in clean_text.lower() for word in ["código", "code", "python", "javascript", "função", "class"])
+            has_question_mark = "?" in clean_text
+            
+            # Cálculo inteligente do tempo de pensamento
+            if question_length > 100 or has_code_words:
+                thinking_time = random.uniform(1.2, 2.0)  # Perguntas complexas
+            elif question_length > 50:
+                thinking_time = random.uniform(0.8, 1.5)  # Perguntas médias
+            else:
+                thinking_time = random.uniform(0.5, 1.0)  # Perguntas simples
+            
+            await asyncio.sleep(thinking_time)
             
             # Processa com ChatGPT (mantém contexto por user_id, passa nome do autor)
             ai_response = await ask_chatgpt(clean_text, user_id, author)
@@ -727,14 +871,14 @@ async def handle_chat_send(sid, data):
             typing_time = max(1.5, min(typing_time, 5.0))  # Entre 1.5 e 5 segundos
             await asyncio.sleep(typing_time)
             
-            # Remove indicador de digitação
+            # Remove indicador de digitação (direto para o usuário)
             await sio.emit("chat:typing", {
-                "author": "Bot",
+                "author": "Guru",
                 "isTyping": False
-            })
+            }, room=sid)
             
             # Publica resposta
-            await publish_message(sio.emit, author="Bot 💬", text=ai_response)
+            await publish_message(sio.emit, author="Guru 🧠", text=ai_response, user_id=user_id, target_sid=sid)
         
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {e}")
@@ -856,7 +1000,7 @@ async def confirm_upload(body: ConfirmUploadIn):
                 
                 # Avisa que está processando
                 await sio.emit("chat:typing", {
-                    "author": "Bot",
+                    "author": "Guru",
                     "isTyping": True
                 })
                 
@@ -876,13 +1020,13 @@ async def confirm_upload(body: ConfirmUploadIn):
                 
                 # Remove indicador de digitação
                 await sio.emit("chat:typing", {
-                    "author": "Bot",
+                    "author": "Guru",
                     "isTyping": False
                 })
                 
                 # Responde com a transcrição e a resposta
                 response_text = f'🎤 _Áudio transcrito:_ "{transcription}"\n\n{ai_response}'
-                await publish_message(sio.emit, author="Bot 💬", text=response_text)
+                await publish_message(sio.emit, author="Guru 🧠", text=response_text, user_id=body.author)
     
     return {"ok": True, "message": msg}
 
