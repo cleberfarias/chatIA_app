@@ -12,8 +12,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
-# Contexto do bot
-SYSTEM_PROMPT = """Você é um assistente de chat muito amigável e humano, conversando em um grupo de mensagens.
+# Contexto do Guru
+SYSTEM_PROMPT = """Você é o Guru 🧠, um assistente de chat muito amigável e sábio, conversando em um grupo de mensagens.
 
 COMPORTAMENTO:
 - Seja caloroso, empático e use uma linguagem natural e informal
@@ -50,6 +50,22 @@ SEMPRE mantenha a indentação e quebras de linha do código."""
 # user_id -> deque de {"role": "user"/"assistant", "content": "texto"}
 conversation_history: dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
 
+# Modos de personalidade do Guru
+GURU_MODES = {
+    "casual": """Seja super descontraído, use gírias, emojis frequentes e linguagem bem informal. 
+Fale como um amigo próximo em uma conversa de bar. Use expressões tipo: "mano", "cara", "brother", "vlw", "tmj".""",
+    
+    "profissional": """Seja educado, formal mas ainda amigável. Use linguagem técnica quando apropriado.
+Evite gírias excessivas. Mantenha tom respeitoso e corporativo, mas não robotizado.""",
+    
+    "tecnico": """Seja preciso, detalhado e técnico. Forneça explicações aprofundadas com terminologia adequada.
+Use exemplos de código quando útil. Foque em precisão e completude das respostas."""
+}
+
+# Preferências do usuário: modo, idioma, etc
+# user_id -> {"mode": "casual", "language": "pt"}
+user_preferences: dict[str, dict] = defaultdict(lambda: {"mode": "casual", "language": "pt"})
+
 
 async def ask_chatgpt(message: str, user_id: str = "anonymous", user_name: str = "Amigo") -> str:
     """
@@ -67,8 +83,13 @@ async def ask_chatgpt(message: str, user_id: str = "anonymous", user_name: str =
     if not OPENAI_API_KEY:
         return "❌ Bot de IA não configurado. Configure OPENAI_API_KEY nas variáveis de ambiente."
     
-    # Prepara as mensagens
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # Obtém preferências do usuário
+    prefs = user_preferences[user_id]
+    mode_instruction = GURU_MODES.get(prefs["mode"], GURU_MODES["casual"])
+    
+    # Prepara as mensagens com modo personalizado
+    system_prompt = f"{SYSTEM_PROMPT}\n\nMODO ATUAL: {prefs['mode'].upper()}\n{mode_instruction}"
+    messages = [{"role": "system", "content": system_prompt}]
     
     # Adiciona histórico do usuário (últimas mensagens)
     user_history = conversation_history[user_id]
@@ -139,35 +160,36 @@ def get_conversation_count(user_id: str) -> int:
 
 def is_ai_question(text: str) -> bool:
     """
-    Verifica se a mensagem é uma pergunta para o bot de IA.
+    Verifica se a mensagem é uma pergunta para o Guru.
     
     Detecta padrões como:
-    - @bot <pergunta>
-    - bot, <pergunta>
-    - Mensagens com "?" direcionadas ao bot
+    - @guru <pergunta>
+    - guru, <pergunta>
+    - Mensagens com "?" direcionadas ao guru
     
     Args:
         text: Texto da mensagem
         
     Returns:
-        True se for uma pergunta para o bot
+        True se for uma pergunta para o Guru
     """
     text_lower = text.lower().strip()
     
-    # Padrões que indicam uma pergunta ao bot (incluindo variações de pronúncia)
+    # Padrões que indicam uma pergunta ao Guru (incluindo variações de pronúncia)
     triggers = [
+        text_lower.startswith("@guru"),
+        text_lower.startswith("guru,"),
+        text_lower.startswith("guru "),
+        text_lower.startswith("hey guru"),
+        text_lower.startswith("ei guru"),
+        text_lower.startswith("oi guru"),
+        # Variações de pronúncia (áudio pode não transcrever perfeitamente)
+        text_lower.startswith("@gugu"),
+        text_lower.startswith("gugu"),
+        # Mantém compatibilidade com @bot (legado)
         text_lower.startswith("@bot"),
         text_lower.startswith("bot,"),
         text_lower.startswith("bot "),
-        text_lower.startswith("hey bot"),
-        text_lower.startswith("ei bot"),
-        text_lower.startswith("oi bot"),
-        # Variações de pronúncia (áudio pode não transcrever perfeitamente)
-        text_lower.startswith("bod"),
-        text_lower.startswith("@bod"),
-        text_lower.startswith("bod,"),
-        text_lower.startswith("bote"),
-        text_lower.startswith("@bote"),
     ]
     
     return any(triggers)
@@ -175,7 +197,7 @@ def is_ai_question(text: str) -> bool:
 
 def clean_bot_mention(text: str) -> str:
     """
-    Remove menções ao bot do texto.
+    Remove menções ao Guru do texto.
     
     Args:
         text: Texto original
@@ -187,8 +209,10 @@ def clean_bot_mention(text: str) -> str:
     
     # Remove prefixos comuns (incluindo variações de transcrição)
     prefixes = [
+        "@guru", "guru,", "hey guru", "ei guru", "oi guru", "guru",
+        "@gugu", "gugu,", "gugu",
+        # Mantém compatibilidade com @bot (legado)
         "@bot", "bot,", "hey bot", "ei bot", "oi bot", "bot",
-        "@bod", "bod,", "bod", "@bote", "bote,", "bote"
     ]
     
     for prefix in prefixes:
@@ -200,3 +224,88 @@ def clean_bot_mention(text: str) -> str:
             break
     
     return text
+
+
+def set_user_mode(user_id: str, mode: str) -> str:
+    """
+    Define o modo de personalidade do Guru para um usuário.
+    
+    Args:
+        user_id: ID do usuário
+        mode: Modo desejado (casual, profissional, tecnico)
+        
+    Returns:
+        Mensagem de confirmação
+    """
+    mode = mode.lower()
+    if mode not in GURU_MODES:
+        return f"❌ Modo inválido. Escolha: {', '.join(GURU_MODES.keys())}"
+    
+    user_preferences[user_id]["mode"] = mode
+    mode_names = {"casual": "Casual 😎", "profissional": "Profissional 💼", "tecnico": "Técnico 🔧"}
+    return f"✅ Modo alterado para: {mode_names[mode]}"
+
+
+def get_user_mode(user_id: str) -> str:
+    """
+    Retorna o modo atual do usuário.
+    
+    Args:
+        user_id: ID do usuário
+        
+    Returns:
+        Nome do modo atual
+    """
+    return user_preferences[user_id]["mode"]
+
+
+def generate_conversation_summary(user_id: str) -> str:
+    """
+    Gera um resumo da conversa do usuário.
+    
+    Args:
+        user_id: ID do usuário
+        
+    Returns:
+        Resumo da conversa
+    """
+    history = conversation_history[user_id]
+    if not history:
+        return "📭 Não há histórico de conversa ainda."
+    
+    user_msgs = [msg for msg in history if msg["role"] == "user"]
+    assistant_msgs = [msg for msg in history if msg["role"] == "assistant"]
+    
+    summary = f"📊 **Resumo da Conversa:**\n\n"
+    summary += f"💬 Total de mensagens: {len(history)}\n"
+    summary += f"❓ Suas perguntas: {len(user_msgs)}\n"
+    summary += f"💡 Minhas respostas: {len(assistant_msgs)}\n\n"
+    
+    if user_msgs:
+        summary += "🔍 Últimos tópicos discutidos:\n"
+        for i, msg in enumerate(list(user_msgs)[-3:], 1):
+            preview = msg["content"][:50] + "..." if len(msg["content"]) > 50 else msg["content"]
+            summary += f"{i}. {preview}\n"
+    
+    return summary
+
+
+def suggest_follow_up_questions(last_response: str, topic: str) -> list[str]:
+    """
+    Gera sugestões de perguntas relacionadas ao tópico.
+    
+    Args:
+        last_response: Última resposta do Guru
+        topic: Tópico da conversa
+        
+    Returns:
+        Lista de perguntas sugeridas
+    """
+    # Sugestões genéricas baseadas em contexto
+    suggestions = [
+        f"Pode explicar mais sobre {topic}?",
+        "Tem algum exemplo prático?",
+        "Quais são as melhores práticas?"
+    ]
+    
+    return suggestions[:2]  # Retorna apenas 2 sugestões

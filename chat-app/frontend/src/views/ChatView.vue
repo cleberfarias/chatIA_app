@@ -77,6 +77,135 @@
 
     <!-- INPUT DE MENSAGEM -->
     <div class="chat-input-wrapper">
+      <!-- 🧠 BANNER DE SESSÃO ATIVA -->
+      <div v-if="guruSessionActive" class="guru-session-banner">
+        <div class="d-flex align-center justify-space-between px-4 py-2">
+          <div class="d-flex align-center">
+            <v-icon size="20" color="white" class="mr-2">mdi-robot-happy</v-icon>
+            <span class="session-text">Em conversa com o Guru</span>
+            <v-icon size="16" color="success" class="ml-2 pulse-icon">mdi-circle</v-icon>
+          </div>
+          <v-btn
+            size="x-small"
+            variant="text"
+            color="white"
+            @click="handleSendMessage('tchau')"
+          >
+            Encerrar
+          </v-btn>
+        </div>
+      </div>
+      
+      <!-- 🧠 CHIPS DE COMANDOS DO GURU -->
+      <div class="guru-commands-bar" v-if="showGuruCommands">
+        <div class="guru-commands-content">
+          <div class="guru-commands-header">
+            <v-icon size="small" color="teal-darken-3" class="mr-1">mdi-robot-happy</v-icon>
+            <span class="guru-commands-title">Comandos do Guru:</span>
+          </div>
+          <v-chip
+            size="small"
+            color="teal-darken-1"
+            variant="flat"
+            prepend-icon="mdi-chat-processing"
+            class="mr-2 mb-2"
+            @click="insertCommand('@guru')"
+          >
+            @guru
+          </v-chip>
+          <v-chip
+            size="small"
+            color="orange-darken-1"
+            variant="flat"
+            prepend-icon="mdi-exit-to-app"
+            class="mr-2 mb-2"
+            @click="insertCommand('tchau')"
+          >
+            tchau
+          </v-chip>
+          <v-chip
+            size="small"
+            color="orange-darken-1"
+            variant="flat"
+            prepend-icon="mdi-location-exit"
+            class="mr-2 mb-2"
+            @click="insertCommand('sair')"
+          >
+            sair
+          </v-chip>
+          <v-chip
+            size="small"
+            color="blue-darken-1"
+            variant="flat"
+            prepend-icon="mdi-lightbulb-question"
+            class="mr-2 mb-2"
+            @click="insertCommand('/ai ')"
+          >
+            /ai
+          </v-chip>
+          <v-chip
+            size="small"
+            color="red-darken-1"
+            variant="flat"
+            prepend-icon="mdi-broom"
+            class="mr-2 mb-2"
+            @click="insertCommand('/limpar')"
+          >
+            /limpar
+          </v-chip>
+          <v-chip
+            size="small"
+            color="purple-darken-1"
+            variant="flat"
+            prepend-icon="mdi-view-list"
+            class="mr-2 mb-2"
+            @click="insertCommand('/ajuda')"
+          >
+            /ajuda
+          </v-chip>
+          <v-chip
+            size="small"
+            color="indigo-darken-1"
+            variant="flat"
+            prepend-icon="mdi-clipboard-text"
+            class="mr-2 mb-2"
+            @click="insertCommand('/resumo')"
+          >
+            /resumo
+          </v-chip>
+          <v-chip
+            size="small"
+            color="cyan-darken-1"
+            variant="flat"
+            prepend-icon="mdi-chart-box"
+            class="mr-2 mb-2"
+            @click="insertCommand('/contexto')"
+          >
+            /contexto
+          </v-chip>
+          <v-btn
+            icon="mdi-close"
+            size="x-small"
+            variant="text"
+            color="grey-darken-2"
+            class="ml-auto"
+            @click="showGuruCommands = false"
+          />
+        </div>
+      </div>
+
+      <!-- 🔘 Botão para mostrar/ocultar comandos -->
+      <v-btn
+        v-if="!showGuruCommands"
+        icon="mdi-robot-happy"
+        size="x-small"
+        color="teal-darken-1"
+        variant="flat"
+        class="guru-toggle-btn"
+        @click="showGuruCommands = true"
+        title="Mostrar comandos do Guru"
+      />
+
       <DSChatInput
         v-model="text"
         :uploading="uploadingFile"
@@ -193,6 +322,8 @@ const lastScrollTop = ref(0);
 const showAttachmentMenu = ref(false);
 const showVoiceRecorder = ref(false);
 const showWppConnectDialog = ref(false);
+const showGuruCommands = ref(true); // 🧠 Mostra chips do Guru por padrão
+const guruSessionActive = ref(false); // 🧠 Rastreia se está em sessão com Guru
 const apiBaseUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 const uploadingFile = ref(false);
 const uploadProgress = ref(0);
@@ -255,12 +386,41 @@ const unreadCount = computed(() => {
   ).length;
 });
 
+// 🧠 Watch para detectar sessão ativa com Guru
+watch(() => chatStore.messages, (messages) => {
+  if (!messages || messages.length === 0) return;
+  
+  // Pega última mensagem
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage?.author?.includes('Guru')) return;
+  
+  // Verifica se é mensagem de despedida (prioridade)
+  const sessionEnded = lastMessage.text?.includes('👋 Até logo');
+  
+  // Verifica se é mensagem de boas-vindas
+  const sessionStarted = lastMessage.text?.includes('pode falar direto comigo') || 
+    lastMessage.text?.includes('sem mencionar @guru');
+  
+  if (sessionEnded) {
+    console.log('🚪 Sessão do Guru encerrada');
+    guruSessionActive.value = false;
+    localStorage.removeItem('guruSessionActive');
+  } else if (sessionStarted) {
+    console.log('🎉 Sessão do Guru iniciada');
+    guruSessionActive.value = true;
+    localStorage.setItem('guruSessionActive', 'true');
+  }
+}, { deep: true });
+
 // Conecta ao socket e carrega histórico ao montar
 onMounted(async () => {
   console.log('📱 ChatView mounted');
   
   // Carrega autenticação do localStorage (pode já estar carregado pelo router)
   authStore.load();
+  
+  // Carrega estado da sessão do Guru
+  guruSessionActive.value = localStorage.getItem('guruSessionActive') === 'true';
   
   // Verifica se tem token válido
   if (!authStore.token) {
@@ -372,6 +532,14 @@ function handleSendMessage(messageText: string) {
   scrollToBottom(true); // smooth = true (interação do usuário)
 }
 
+// 🧠 FUNÇÃO: Insere comando do Guru no input e envia automaticamente
+function insertCommand(command: string) {
+  // Envia o comando diretamente
+  handleSendMessage(command);
+  // Minimiza a barra de comandos
+  showGuruCommands.value = false;
+}
+
 function closeDialog() {
   if (author.value.trim()) {
     showNameDialog.value = false;
@@ -441,13 +609,31 @@ async function handleAudioRecorded(audioBlob: Blob) {
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
-  padding-bottom: 80px;
+  padding-bottom: 100px; /* Espaço para input + barra guru + typing */
+  background-color: #e5ddd5;
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAGElEQVQYlWNgYGCQwoKxgqGgcJA5h3yFAAs8BRWVSwooAAAAAElFTkSuQmCC');
+  background-repeat: repeat;
+  opacity: 0.98;
 }
 
-/* 📱 Mobile - Padding menor */
+/* 📱 Mobile - Padding ajustado */
 @media (max-width: 599px) {
   .messages-wrapper {
-    padding-bottom: 70px;
+    padding-bottom: 90px;
+  }
+}
+
+/* 📱 Tablet */
+@media (min-width: 600px) and (max-width: 959px) {
+  .messages-wrapper {
+    padding-bottom: 110px;
+  }
+}
+
+/* 🖥️ Desktop */
+@media (min-width: 960px) {
+  .messages-wrapper {
+    padding-bottom: 120px;
   }
 }
 
@@ -480,6 +666,158 @@ async function handleAudioRecorded(audioBlob: Blob) {
   z-index: 10;
   background: inherit;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 🧠 Banner de sessão ativa com Guru */
+.guru-session-banner {
+  background: linear-gradient(135deg, #00695c 0%, #00897b 100%);
+  border-bottom: 2px solid #004d40;
+  animation: slideDown 0.3s ease-out;
+}
+
+.session-text {
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pulse-icon {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+}
+
+/* 🧠 Barra de comandos do Guru */
+.guru-commands-bar {
+  background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%);
+  border-bottom: 1px solid #4dd0e1;
+  padding: 10px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.guru-commands-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.guru-commands-header {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #00695c;
+  white-space: nowrap;
+}
+
+.guru-commands-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.guru-commands-bar .v-chip {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.guru-commands-bar .v-chip:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.guru-commands-bar .v-chip:active {
+  transform: translateY(0);
+}
+
+/* 🔘 Botão toggle do Guru */
+.guru-toggle-btn {
+  position: absolute;
+  bottom: 76px;
+  right: 12px;
+  z-index: 11;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.guru-toggle-btn:hover {
+  animation: none;
+}
+
+/* 📱 Mobile - Scrollbar horizontal sutil */
+.guru-commands-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.guru-commands-bar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.guru-commands-bar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+/* 📱 Mobile - Ajustes responsivos */
+@media (max-width: 599px) {
+  .guru-commands-bar {
+    padding: 8px 10px;
+  }
+  
+  .guru-commands-header {
+    font-size: 11px;
+  }
+  
+  .guru-commands-bar .v-chip {
+    font-size: 11px;
+    height: 28px;
+  }
+  
+  .guru-toggle-btn {
+    bottom: 68px;
+    right: 10px;
+  }
 }
 
 .messages-wrapper::-webkit-scrollbar {
