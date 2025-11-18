@@ -34,6 +34,8 @@ class ConversationMessage(BaseModel):
     timestamp: int
     type: str = "text"
     status: Optional[str] = None
+    userId: Optional[str] = None  # 🆕 ID do remetente
+    contactId: Optional[str] = None  # 🆕 ID do destinatário
     attachment: Optional[dict] = None
     url: Optional[str] = None
 
@@ -126,7 +128,9 @@ async def get_conversation(contact_id: str, limit: int = 50, before: Optional[in
                 "text": msg.get("text", ""),
                 "timestamp": int(msg["createdAt"].timestamp() * 1000),
                 "type": msg.get("type", "text"),
-                "status": msg.get("status", "sent")
+                "status": msg.get("status", "sent"),
+                "userId": msg.get("userId"),  # 🆕 ID do remetente
+                "contactId": msg.get("contactId")  # 🆕 ID do destinatário
             }
             
             # Adiciona attachment se existir

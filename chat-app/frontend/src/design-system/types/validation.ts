@@ -34,6 +34,8 @@ export const MessageSchema = z.object({
   timestamp: z.number().positive('Timestamp inválido'),
   status: z.enum(['pending', 'sent', 'delivered', 'read']).optional().default('sent'), // 🔧 Adicionado 'pending'
   type: z.enum(['text', 'image', 'file', 'audio']).optional().default('text'),
+  userId: z.string().optional(), // 🆕 ID do remetente (quem enviou)
+  contactId: z.string().optional(), // 🆕 ID do destinatário (para quem foi enviado)
   attachment: AttachmentSchema.optional(), // 🆕 Dados do anexo (S3/MinIO)
   url: z.string().url().optional(), // 🆕 URL pré-assinada para download
 });
@@ -51,6 +53,8 @@ export const IncomingMessageSchema = z.object({
   timestamp: z.number().optional(),
   status: z.enum(['pending', 'sent', 'delivered', 'read']).optional(), // 🔧 Adicionado 'pending'
   type: z.enum(['text', 'image', 'file', 'audio']).optional(),
+  userId: z.string().optional(), // 🆕 ID do remetente
+  contactId: z.string().optional(), // 🆕 ID do destinatário
   attachment: AttachmentSchema.optional(), // 🆕 Dados do anexo
   url: z.string().optional(), // 🆕 URL pré-assinada (não precisa validar URL aqui)
 });

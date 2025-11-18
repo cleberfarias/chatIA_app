@@ -80,17 +80,17 @@ export const useChatStore = defineStore('chat', {
       // 📨 Evento: Nova mensagem de outro usuário
       this.socket.on('chat:new-message', async (msg: Message) => {
         console.log('📨 Nova mensagem recebida:', msg);
-        console.log('🔍 currentContactId:', this.currentContactId, 'msg.contactId:', msg.contactId);
+        console.log('🔍 currentContactId:', this.currentContactId, 'msg.userId:', msg.userId, 'msg.contactId:', msg.contactId);
         
-        // 🆕 Verifica se mensagem é do contato atual
-        // Se não tem contactId (mensagens antigas), sempre adiciona
-        // Se tem contactId, verifica se é do contato atual
-        const isCurrentContact = !msg.contactId || !this.currentContactId || msg.contactId === this.currentContactId;
+        // 🆕 Verifica se mensagem é do contato que está conversando
+        // Mensagem pertence à conversa atual se:
+        // - Mensagem VEIO do contato selecionado (msg.userId === currentContactId)
+        const isFromCurrentContact = this.currentContactId && msg.userId === this.currentContactId;
         
-        console.log('✅ isCurrentContact:', isCurrentContact);
+        console.log('✅ isFromCurrentContact:', isFromCurrentContact);
         
-        if (isCurrentContact) {
-          // Adiciona mensagem ao chat atual
+        // Adiciona mensagem ao chat se estiver na conversa correta
+        if (isFromCurrentContact || !this.currentContactId) {
           this.messages.push(msg);
           
           // Se usuário está acima, mostra badge "Novas mensagens"
@@ -100,17 +100,19 @@ export const useChatStore = defineStore('chat', {
         }
         
         // 🆕 Atualiza lista de contatos (sempre, independente do contato atual)
-        if (msg.contactId) {
+        if (msg.userId) {
           const { useContactsStore } = await import('./contacts');
           const contactsStore = useContactsStore();
           
-          // Se não é do contato atual, incrementa unread
-          if (!isCurrentContact) {
-            contactsStore.incrementUnread(msg.contactId);
+          // Se não está visualizando este contato, incrementa unread
+          if (!isFromCurrentContact) {
+            console.log('📬 Incrementando unread para contato:', msg.userId);
+            contactsStore.incrementUnread(msg.userId);
           }
           
-          // Atualiza última mensagem
-          contactsStore.updateContactLastMessage(msg.contactId, msg.text, msg.timestamp);
+          // Atualiza última mensagem do remetente
+          console.log('📝 Atualizando última mensagem do contato:', msg.userId);
+          contactsStore.updateContactLastMessage(msg.userId, msg.text, msg.timestamp);
         }
       });
 
@@ -326,10 +328,10 @@ export const useChatStore = defineStore('chat', {
      * ⌨️ Emite evento de digitação
      */
     emitTyping(isTyping: boolean) {
-      if (!this.socket?.connected) return;
+      if (!this.socket?.connected || !this.currentContactId) return;
 
       this.socket.emit('chat:typing', {
-        chatId: 'main',
+        contactId: this.currentContactId,  // 🆕 Para quem está digitando
         author: this.currentUser,
         isTyping,
       });

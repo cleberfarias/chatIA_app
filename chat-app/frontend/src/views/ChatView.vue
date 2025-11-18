@@ -35,12 +35,12 @@
           <!-- Mensagem -->
           <div
             v-else
-            :class="['mb-2', item.author === author ? 'd-flex justify-end' : 'd-flex justify-start']"
+            :class="['mb-2', item.userId === currentUserId ? 'd-flex justify-end' : 'd-flex justify-start']"
           >
             <DSMessageBubble
               :author="item.author"
               :timestamp="item.timestamp"
-              :variant="item.author === author ? 'sent' : 'received'"
+              :variant="item.userId === currentUserId ? 'sent' : 'received'"
               :status="item.status"
               :show-author="item.showAuthor"
               :show-timestamp="item.showTimestamp"
@@ -185,6 +185,9 @@ const contactsStore = useContactsStore();
 const author = ref('');
 const text = ref('');
 const showNameDialog = ref(false); // Não mostra mais o dialog de nome
+
+// 🆕 Computed: ID do usuário atual
+const currentUserId = computed(() => authStore.user?.id || '');
 const isScrolledToBottom = ref(true);
 const lastScrollTop = ref(0);
 const showAttachmentMenu = ref(false);
@@ -248,7 +251,7 @@ const groupedMessages = computed(() => {
 const unreadCount = computed(() => {
   const messages = chatStore.messages || [];
   return messages.filter(m => 
-    m.author !== author.value && m.status !== 'read'
+    m.userId !== currentUserId.value && m.status !== 'read'
   ).length;
 });
 

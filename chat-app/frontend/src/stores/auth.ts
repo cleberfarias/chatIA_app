@@ -2,7 +2,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-type User = { name: string; email: string }
+type User = { id: string; name: string; email: string }
 
 const STORAGE_KEY = 'app_auth'
 
@@ -37,7 +37,11 @@ export const useAuthStore = defineStore('auth', () => {
     if (!res.ok) throw new Error('Credenciais inválidas')
     const data = await res.json()
     token.value = data.access_token
-    user.value = { name: data.user.name, email: data.user.email }
+    user.value = { 
+      id: data.user.id,
+      name: data.user.name, 
+      email: data.user.email 
+    }
     persist()
   }
 

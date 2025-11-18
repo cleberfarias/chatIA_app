@@ -142,6 +142,8 @@ socket_app = socketio.ASGIApp(sio, app)
 
 # Armazena sessões ativas (sid -> user_id)
 active_sessions = {}
+# Armazena mapeamento reverso (user_id -> sid) para entrega direcionada
+user_sessions = {}
 
 @app.get("/")
 async def health_check():
@@ -409,11 +411,13 @@ async def connect(sid, environ, auth):
         
         # Registra sessão ativa
         active_sessions[sid] = user_id
+        user_sessions[user_id] = sid  # 🆕 Mapeamento reverso para entrega direcionada
         
         # 🆕 Notifica outros usuários que este está online
         await sio.emit('user:online', {'userId': user_id}, skip_sid=sid)
         
         print(f"✅ Socket autenticado: {user.get('name')} ({user_id}) - sid: {sid}")
+        print(f"👥 Usuários online: {len(user_sessions)}")
         return True
         
     except Exception as e:
@@ -429,29 +433,46 @@ async def disconnect(sid):
         user_id = active_sessions[sid]
         del active_sessions[sid]
         
+        # Remove do mapeamento reverso
+        if user_id in user_sessions:
+            del user_sessions[user_id]
+        
         # 🆕 Notifica outros usuários que este está offline
         await sio.emit('user:offline', {'userId': user_id})
         
         print(f"👤 Usuário {user_id} desconectado")
+        print(f"👥 Usuários online: {len(user_sessions)}")
 
 # Evento: chat:typing Usuário está digitando
 @sio.on("chat:typing")
 async def handle_typing(sid, data):
-    """Recebe evento de digitação e broadcast para outros clientes"""
+    """Recebe evento de digitação e envia apenas para o contato específico"""
     try:
-        # Pega o user_id do ambiente (se disponível)
+        # Pega o user_id do ambiente
         environ = sio.get_environ(sid)
         user_id = environ.get("user_id", "anonymous")
         
-        # Prepara resposta
-        await sio.emit("chat:typing", {
-            "userId": user_id,
-            "author": data.get("author"),
-            "chatId": data.get("chatId"),
-            "isTyping": data.get("isTyping", False)
-        }, skip_sid=sid)
-
-        print(f"⌨️  Typing event: {user_id} - {data.get('isTyping')}")
+        # ID do contato (destinatário)
+        contact_id = data.get("contactId")
+        
+        if contact_id:
+            # Busca sessão do contato
+            contact_sid = user_sessions.get(contact_id)
+            
+            if contact_sid:
+                # Envia apenas para o contato específico
+                await sio.emit("chat:typing", {
+                    "userId": user_id,
+                    "author": data.get("author"),
+                    "isTyping": data.get("isTyping", False)
+                }, room=contact_sid)
+                
+                print(f"⌨️  Typing event: {user_id} → {contact_id} - {data.get('isTyping')}")
+            else:
+                print(f"📪 Contato {contact_id} offline - typing ignorado")
+        else:
+            # Sem contactId - ignora (evita broadcast)
+            print(f"⚠️  Typing sem contactId - ignorado")
         
     except Exception as e:
         print(f"❌ Erro chat:typing: {e}")
@@ -584,7 +605,8 @@ async def handle_chat_send(sid, data):
             "timestamp": int(doc["createdAt"].timestamp() * 1000),
             "status": doc["status"],
             "type": doc["type"],
-            "contactId": doc.get("contactId")  # 🆕 Inclui contactId na resposta
+            "userId": user_id,  # 🆕 ID do remetente (quem enviou)
+            "contactId": doc.get("contactId")  # 🆕 ID do destinatário (para quem foi enviado)
         }
         
         # Adiciona attachment se existir
@@ -601,9 +623,21 @@ async def handle_chat_send(sid, data):
         }, room=sid)
         print(f"📤 ACK enviado para {sid} (tempId: {temp_id} → {message_id})")
         
-        # 2. Envia broadcast para todos os clientes (exceto remetente)
-        await sio.emit("chat:new-message", response, skip_sid=sid)
-        print(f"📨 Mensagem broadcast para todos (exceto {sid})")
+        # 2. Envia mensagem para o destinatário específico (se contactId fornecido)
+        if message_create.contactId:
+            contact_sid = user_sessions.get(message_create.contactId)
+            if contact_sid:
+                # Destinatário está online - envia apenas para ele
+                await sio.emit("chat:new-message", response, room=contact_sid)
+                print(f"📨 Mensagem enviada para contato {message_create.contactId} (sid: {contact_sid})")
+            else:
+                # Destinatário offline - mensagem ficará no banco para quando ele logar
+                print(f"📪 Contato {message_create.contactId} está offline - mensagem salva no banco")
+        else:
+            # Sem contactId - broadcast para todos (compatibilidade com sistema antigo)
+            await sio.emit("chat:new-message", response, skip_sid=sid)
+            print(f"📨 Mensagem broadcast para todos (exceto {sid})")
+        
         print(f"🔍 Response data: contactId={response.get('contactId')}, author={response.get('author')}")
         
         # 3. Emite 'delivered' para o remetente após ~200ms (simula latência de rede)
