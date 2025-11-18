@@ -12,7 +12,7 @@ import * as directives from 'vuetify/directives'
 import '@mdi/font/css/materialdesignicons.css'
 
 // Views
-import ChatView from './views/ChatView.vue';
+import ChatLayoutView from './views/ChatLayoutView.vue';
 import LoginView from './views/LoginView.vue';
 
 const vuetify = createVuetify({
@@ -28,7 +28,7 @@ const router = createRouter({
   routes: [
     { 
       path: '/', 
-      component: ChatView,
+      component: ChatLayoutView,
       meta: { requiresAuth: true }
     },
     { 

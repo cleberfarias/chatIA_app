@@ -14,6 +14,7 @@ export const useChatStore = defineStore('chat', {
     messages: [] as Message[],
     connected: false,
     currentUser: 'Usuário',
+    currentContactId: null as string | null, // 🆕 ID do contato selecionado
     
     // 🆕 UX Features
     isTyping: {} as Record<string, TypingInfo>, // userId -> info
@@ -77,13 +78,39 @@ export const useChatStore = defineStore('chat', {
       });
 
       // 📨 Evento: Nova mensagem de outro usuário
-      this.socket.on('chat:new-message', (msg: Message) => {
+      this.socket.on('chat:new-message', async (msg: Message) => {
         console.log('📨 Nova mensagem recebida:', msg);
-        this.messages.push(msg);
+        console.log('🔍 currentContactId:', this.currentContactId, 'msg.contactId:', msg.contactId);
         
-        // Se usuário está acima, mostra badge "Novas mensagens"
-        if (!this.isScrolledToBottom) {
-          this.hasUnreadMessages = true;
+        // 🆕 Verifica se mensagem é do contato atual
+        // Se não tem contactId (mensagens antigas), sempre adiciona
+        // Se tem contactId, verifica se é do contato atual
+        const isCurrentContact = !msg.contactId || !this.currentContactId || msg.contactId === this.currentContactId;
+        
+        console.log('✅ isCurrentContact:', isCurrentContact);
+        
+        if (isCurrentContact) {
+          // Adiciona mensagem ao chat atual
+          this.messages.push(msg);
+          
+          // Se usuário está acima, mostra badge "Novas mensagens"
+          if (!this.isScrolledToBottom) {
+            this.hasUnreadMessages = true;
+          }
+        }
+        
+        // 🆕 Atualiza lista de contatos (sempre, independente do contato atual)
+        if (msg.contactId) {
+          const { useContactsStore } = await import('./contacts');
+          const contactsStore = useContactsStore();
+          
+          // Se não é do contato atual, incrementa unread
+          if (!isCurrentContact) {
+            contactsStore.incrementUnread(msg.contactId);
+          }
+          
+          // Atualiza última mensagem
+          contactsStore.updateContactLastMessage(msg.contactId, msg.text, msg.timestamp);
         }
       });
 
@@ -152,6 +179,22 @@ export const useChatStore = defineStore('chat', {
         }
       });
 
+      // 🟢 Evento: Usuário ficou online
+      this.socket.on('user:online', async (data: { userId: string }) => {
+        console.log('🟢 Usuário online:', data.userId);
+        const { useContactsStore } = await import('./contacts');
+        const contactsStore = useContactsStore();
+        contactsStore.setOnlineStatus(data.userId, true);
+      });
+
+      // 🔴 Evento: Usuário ficou offline
+      this.socket.on('user:offline', async (data: { userId: string }) => {
+        console.log('🔴 Usuário offline:', data.userId);
+        const { useContactsStore } = await import('./contacts');
+        const contactsStore = useContactsStore();
+        contactsStore.setOnlineStatus(data.userId, false);
+      });
+
       // 📜 Carrega histórico inicial
       await this.loadMessages();
     },
@@ -168,11 +211,16 @@ export const useChatStore = defineStore('chat', {
     /**
      * 📜 Carrega mensagens do histórico
      */
-    async loadMessages(before?: number) {
+    async loadMessages(before?: number, contactId?: string) {
       this.loadingMore = true;
       
       try {
-        const url = new URL(`${API_URL}/messages`);
+        // 🆕 Se tiver contactId, usa rota de contatos
+        const endpoint = contactId 
+          ? `${API_URL}/contacts/${contactId}/messages`
+          : `${API_URL}/messages`;
+        
+        const url = new URL(endpoint);
         if (before) url.searchParams.set('before', String(before));
         url.searchParams.set('limit', '30');
 
@@ -188,6 +236,7 @@ export const useChatStore = defineStore('chat', {
         }
 
         this.hasMoreMessages = data.hasMore;
+        this.currentContactId = contactId || null; // 🆕 Salva contactId atual
       } catch (error) {
         console.error('❌ Erro ao carregar mensagens:', error);
       } finally {
@@ -215,15 +264,16 @@ export const useChatStore = defineStore('chat', {
       this.messages.push(message);
       this.pendingMessages.set(tempId, { message, retries: 0 });
 
-      // 📡 Envia ao servidor
+      // 📡 Envia ao servidor (incluindo contactId se houver)
       this.socket.emit('chat:send', {
         author: message.author,
         text: message.text,
         type: message.type,
         tempId,
+        contactId: this.currentContactId, // 🆕 Inclui ID do contato
       });
 
-      console.log('📤 Mensagem enviada (optimistic):', tempId);
+      console.log('📤 Mensagem enviada (optimistic):', tempId, 'para contato:', this.currentContactId);
     },
 
     /**

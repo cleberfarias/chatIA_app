@@ -17,6 +17,7 @@ class MessageBase(BaseModel):
     status: Optional[str] = "sent"
     type: str = "text"  # "text" | "image" | "file"
     attachment: Optional[AttachmentInfo] = None
+    contactId: Optional[str] = None  # 🆕 ID do contato da conversa
 
 
 class MessageCreate(MessageBase):

@@ -41,6 +41,14 @@ try:
 except ImportError:
     print("⚠️  Arquivo users.py não encontrado - autenticação não disponível")
 
+# Importa e registra rotas de contatos
+try:
+    from contacts import router as contacts_router
+    app.include_router(contacts_router)
+    print("✅ Rotas de contatos carregadas")
+except ImportError:
+    print("⚠️  Arquivo contacts.py não encontrado - contatos não disponíveis")
+
 # Router de automações
 automations_router = APIRouter(prefix="/automations", tags=["automations"])
 automations_col = db.automations
@@ -143,15 +151,22 @@ async def health_check():
 @app.get("/messages")
 async def get_messages(
     before: Optional[int] = None,
-    limit: int = Query(default=30, le=100)
+    limit: int = Query(default=30, le=100),
+    contact_id: Optional[str] = None  # 🆕 Filtra por contato
 ):
     """
     Retorna histórico de mensagens com paginação.
     
     - before: timestamp em milissegundos para buscar mensagens anteriores(retorna mensagens anteriores a essa data)
     - limit: número máximo de mensagens a retornar (padrão 30, máximo 100)
+    - contact_id: (opcional) filtra mensagens de uma conversa específica
     """
     query = {}
+    
+    # 🆕 Filtra por contato se fornecido
+    if contact_id:
+        query["contactId"] = contact_id
+    
     # se 'before' foi informado, filtra mensagens anteriores a essa data
     if before:
         before_dt = datetime.fromtimestamp(before / 1000)
@@ -395,6 +410,9 @@ async def connect(sid, environ, auth):
         # Registra sessão ativa
         active_sessions[sid] = user_id
         
+        # 🆕 Notifica outros usuários que este está online
+        await sio.emit('user:online', {'userId': user_id}, skip_sid=sid)
+        
         print(f"✅ Socket autenticado: {user.get('name')} ({user_id}) - sid: {sid}")
         return True
         
@@ -410,6 +428,10 @@ async def disconnect(sid):
     if sid in active_sessions:
         user_id = active_sessions[sid]
         del active_sessions[sid]
+        
+        # 🆕 Notifica outros usuários que este está offline
+        await sio.emit('user:offline', {'userId': user_id})
+        
         print(f"👤 Usuário {user_id} desconectado")
 
 # Evento: chat:typing Usuário está digitando
@@ -545,6 +567,7 @@ async def handle_chat_send(sid, data):
             "status": message_create.status,
             "type": message_create.type,
             "userId": user_id,  # Adiciona ID do usuário autenticado
+            "contactId": message_create.contactId,  # 🆕 ID do contato (conversa individual)
             "createdAt": now
         }
         
@@ -560,7 +583,8 @@ async def handle_chat_send(sid, data):
             "text": doc["text"],
             "timestamp": int(doc["createdAt"].timestamp() * 1000),
             "status": doc["status"],
-            "type": doc["type"]
+            "type": doc["type"],
+            "contactId": doc.get("contactId")  # 🆕 Inclui contactId na resposta
         }
         
         # Adiciona attachment se existir
@@ -580,6 +604,7 @@ async def handle_chat_send(sid, data):
         # 2. Envia broadcast para todos os clientes (exceto remetente)
         await sio.emit("chat:new-message", response, skip_sid=sid)
         print(f"📨 Mensagem broadcast para todos (exceto {sid})")
+        print(f"🔍 Response data: contactId={response.get('contactId')}, author={response.get('author')}")
         
         # 3. Emite 'delivered' para o remetente após ~200ms (simula latência de rede)
         import asyncio

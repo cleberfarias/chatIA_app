@@ -6,6 +6,16 @@
     density="comfortable"
   >
     <div class="d-flex align-center w-100 px-2">
+      <!-- 🆕 Botão voltar (mobile) -->
+      <v-btn 
+        v-if="showBackButton"
+        icon="mdi-arrow-left" 
+        color="white" 
+        variant="text" 
+        class="mr-2 back-button"
+        @click="$emit('back')"
+      />
+      
       <v-avatar :size="40" :color="colors.secondary" class="mr-3 flex-shrink-0">
         <v-img v-if="avatar" :src="avatar" />
         <span v-else class="text-h6">{{ initials }}</span>
@@ -56,6 +66,7 @@ interface Props {
   name: string;
   avatar?: string;
   online?: boolean;
+  showBackButton?: boolean; // 🆕 Mostra botão voltar (mobile)
   typing?: boolean;
   lastSeen?: number;
 }
@@ -69,6 +80,7 @@ defineEmits<{
   search: [];
   wppConnect: [];
   logout: [];
+  back: []; // 🆕 Evento voltar
 }>();
 
 const initials = computed(() => {
@@ -92,6 +104,17 @@ const statusText = computed(() => {
 </script>
 
 <style scoped>
+/* 🆕 Botão voltar - apenas mobile */
+.back-button {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .back-button {
+    display: inline-flex;
+  }
+}
+
 .header-info {
   display: flex;
   flex-direction: column;

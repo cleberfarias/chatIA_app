@@ -1,17 +1,5 @@
 <template>
   <div class="chat-container" :style="{ background: colors.chatBackground }">
-    <!-- HEADER -->
-    <div class="chat-header">
-      <DSChatHeader
-        :name="author || 'Chat'"
-        :online="chatStore.connected"
-        :typing="Object.keys(chatStore.isTyping).length > 0"
-        @search="() => {}"
-        @wpp-connect="showWppConnectDialog = true"
-        @logout="handleLogout"
-      />
-    </div>
-
     <!-- ÁREA DE MENSAGENS -->
     <div 
       ref="containerRef" 
@@ -169,7 +157,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import DSChatHeader from '../design-system/components/DSChatHeader.vue';
 import DSMessageBubble from '../design-system/components/DSMessageBubble.vue';
 import DSChatInput from '../design-system/components/DSChatInput.vue';
 import TypingIndicator from '../components/TypingIndicator.vue';
@@ -179,13 +166,22 @@ import VoiceRecorder from '../components/VoiceRecorder.vue';
 import WppConnectDialog from '../components/WppConnectDialog.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
+import { useContactsStore } from '../stores/contacts';
 import { useScrollToBottom } from '../design-system/composables/useScrollToBottom.ts';
 import { colors, spacing } from '../design-system/tokens/index.ts';
 import { uploadAndSend } from '../composables/useUpload';
+import type { Contact } from '../stores/contacts';
+
+// 🆕 Props
+interface Props {
+  contact?: Contact;
+}
+const props = defineProps<Props>();
 
 const router = useRouter();
 const chatStore = useChatStore();
 const authStore = useAuthStore();
+const contactsStore = useContactsStore();
 const author = ref('');
 const text = ref('');
 const showNameDialog = ref(false); // Não mostra mais o dialog de nome
@@ -216,7 +212,10 @@ const groupedMessages = computed(() => {
   let lastTimestamp = 0;
   const TIME_GAP = 5 * 60 * 1000; // 5 minutos
 
-  chatStore.messages.forEach((msg, index) => {
+  // Proteção contra messages undefined
+  const messages = chatStore.messages || [];
+  
+  messages.forEach((msg, index) => {
     const msgDate = new Date(msg.timestamp);
     const dateKey = msgDate.toLocaleDateString('pt-BR');
 
@@ -235,7 +234,7 @@ const groupedMessages = computed(() => {
       ...msg,
       // 🔧 NÃO sobrescreve o type original (mantém 'text', 'image', 'file', etc)
       showAuthor: !shouldGroup || msg.author !== author.value,
-      showTimestamp: !shouldGroup || index === chatStore.messages.length - 1,
+      showTimestamp: !shouldGroup || index === messages.length - 1,
     });
 
     lastAuthor = msg.author;
@@ -247,7 +246,8 @@ const groupedMessages = computed(() => {
 
 // 🆕 COMPUTED: Conta mensagens não lidas
 const unreadCount = computed(() => {
-  return chatStore.messages.filter(m => 
+  const messages = chatStore.messages || [];
+  return messages.filter(m => 
     m.author !== author.value && m.status !== 'read'
   ).length;
 });
@@ -272,10 +272,20 @@ onMounted(async () => {
   }
   
   try {
-    // Conecta ao socket com token JWT (já carrega mensagens internamente)
-    await chatStore.connect(authStore.token);
+    // Conecta ao socket com token JWT se não conectado
+    if (!chatStore.connected) {
+      await chatStore.connect(authStore.token);
+    }
+    
+    // 🆕 Carrega mensagens do contato específico
+    if (props.contact) {
+      await chatStore.loadMessages(undefined, props.contact.id);
+      // Marca mensagens como lidas
+      await contactsStore.markContactRead(props.contact.id);
+    }
+    
     scrollToBottom();
-    console.log('✅ Socket conectado e mensagens carregadas');
+    console.log('✅ Socket conectado e mensagens carregadas para contato:', props.contact?.name);
   } catch (error) {
     console.error('❌ Erro ao conectar socket:', error);
     // Se falhar autenticação, redireciona para login
@@ -283,13 +293,24 @@ onMounted(async () => {
   }
 });
 
+// 🆕 Watch para recarregar quando mudar de contato
+watch(() => props.contact?.id, async (newContactId, oldContactId) => {
+  console.log('👀 Watch contact.id:', { newContactId, oldContactId, contact: props.contact });
+  if (newContactId && newContactId !== oldContactId) {
+    console.log('🔄 Mudou de contato:', newContactId);
+    await chatStore.loadMessages(undefined, newContactId);
+    await contactsStore.markContactRead(newContactId);
+    scrollToBottom();
+  }
+}, { immediate: true });
+
 // Desconecta ao desmontar
 onBeforeUnmount(() => {
   chatStore.disconnect();
 });
 
 // 🆕 Auto-scroll INTELIGENTE (só rola se usuário estava no final)
-watch(() => chatStore.messages.length, () => {
+watch(() => chatStore.messages?.length ?? 0, () => {
   if (isScrolledToBottom.value) {
     scrollToBottom(); // smooth = false (default)
   }
@@ -317,7 +338,8 @@ async function loadMoreMessages() {
   if (oldestMessage) {
     const scrollHeightBefore = containerRef.value?.scrollHeight || 0;
     
-    await chatStore.loadMessages(oldestMessage.timestamp);
+    // 🆕 Passa contactId para paginação
+    await chatStore.loadMessages(oldestMessage.timestamp, props.contact?.id);
     
     // Mantém posição do scroll após carregar
     setTimeout(() => {
@@ -351,12 +373,6 @@ function closeDialog() {
   if (author.value.trim()) {
     showNameDialog.value = false;
   }
-}
-
-function handleLogout() {
-  chatStore.disconnect();
-  authStore.logout();
-  router.push('/login');
 }
 
 async function handleFilesSelected(fileList: FileList) {
@@ -415,14 +431,6 @@ async function handleAudioRecorded(audioBlob: Blob) {
   width: 100%;
   overflow: hidden;
   position: relative;
-}
-
-.chat-header {
-  flex-shrink: 0;
-  z-index: 10;
-  position: sticky;
-  top: 0;
-  background: inherit;
 }
 
 .messages-wrapper {
