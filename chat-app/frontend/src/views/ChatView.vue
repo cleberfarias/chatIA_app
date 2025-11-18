@@ -183,6 +183,69 @@
           >
             /contexto
           </v-chip>
+          
+          <!-- Separador de Agentes -->
+          <v-divider class="my-2"></v-divider>
+          
+          <div class="guru-commands-header mt-2">
+            <v-icon size="small" color="purple-darken-2" class="mr-1">mdi-account-group</v-icon>
+            <span class="guru-commands-title">Agentes Especializados:</span>
+          </div>
+          
+          <v-chip
+            size="small"
+            color="deep-purple-darken-1"
+            variant="flat"
+            prepend-icon="mdi-scale-balance"
+            class="mr-2 mb-2"
+            @click="insertCommand('@advogado ')"
+          >
+            @advogado ⚖️
+          </v-chip>
+          
+          <v-chip
+            size="small"
+            color="blue-grey-darken-1"
+            variant="flat"
+            prepend-icon="mdi-briefcase-account"
+            class="mr-2 mb-2"
+            @click="insertCommand('@vendedor ')"
+          >
+            @vendedor 💼
+          </v-chip>
+          
+          <v-chip
+            size="small"
+            color="red-darken-1"
+            variant="flat"
+            prepend-icon="mdi-hospital-box"
+            class="mr-2 mb-2"
+            @click="insertCommand('@medico ')"
+          >
+            @medico 🩺
+          </v-chip>
+          
+          <v-chip
+            size="small"
+            color="green-darken-1"
+            variant="flat"
+            prepend-icon="mdi-meditation"
+            class="mr-2 mb-2"
+            @click="insertCommand('@psicologo ')"
+          >
+            @psicologo 🧘
+          </v-chip>
+          
+          <v-chip
+            size="small"
+            color="amber-darken-2"
+            variant="flat"
+            prepend-icon="mdi-robot"
+            class="mr-2 mb-2"
+            @click="insertCommand('/agentes')"
+          >
+            /agentes
+          </v-chip>
           <v-btn
             icon="mdi-close"
             size="x-small"
@@ -204,6 +267,17 @@
         class="guru-toggle-btn"
         @click="showGuruCommands = true"
         title="Mostrar comandos do Guru"
+      />
+      
+      <!-- 🤖 Botão para criar bot personalizado -->
+      <v-btn
+        icon="mdi-plus-circle"
+        size="x-small"
+        color="purple-darken-2"
+        variant="flat"
+        class="custom-bot-btn"
+        @click="showBotCreator = true"
+        title="Criar Bot Personalizado"
       />
 
       <DSChatInput
@@ -251,6 +325,12 @@
       @audio-recorded="handleAudioRecorded"
     />
 
+    <!-- CRIADOR DE BOT PERSONALIZADO -->
+    <CustomBotCreator
+      v-model="showBotCreator"
+      @bot-created="handleBotCreated"
+    />
+
     <!-- DIALOG PARA NOME DO USUÁRIO -->
     <v-dialog v-model="showNameDialog" max-width="400" persistent>
       <v-card>
@@ -284,7 +364,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import DSMessageBubble from '../design-system/components/DSMessageBubble.vue';
 import DSChatInput from '../design-system/components/DSChatInput.vue';
@@ -292,6 +372,7 @@ import TypingIndicator from '../components/TypingIndicator.vue';
 import DateSeparator from '../components/DateSeparator.vue';
 import AttachmentMenu from '../components/AttachmentMenu.vue';
 import VoiceRecorder from '../components/VoiceRecorder.vue';
+import CustomBotCreator from '../components/CustomBotCreator.vue';
 import WppConnectDialog from '../components/WppConnectDialog.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
@@ -321,6 +402,7 @@ const isScrolledToBottom = ref(true);
 const lastScrollTop = ref(0);
 const showAttachmentMenu = ref(false);
 const showVoiceRecorder = ref(false);
+const showBotCreator = ref(false);
 const showWppConnectDialog = ref(false);
 const showGuruCommands = ref(true); // 🧠 Mostra chips do Guru por padrão
 const guruSessionActive = ref(false); // 🧠 Rastreia se está em sessão com Guru
@@ -534,10 +616,61 @@ function handleSendMessage(messageText: string) {
 
 // 🧠 FUNÇÃO: Insere comando do Guru no input e envia automaticamente
 function insertCommand(command: string) {
-  // Envia o comando diretamente
-  handleSendMessage(command);
+  // Se for menção de agente (começa com @), coloca no input para usuário completar
+  if (command.startsWith('@') && command.includes(' ')) {
+    text.value = command;
+    // Foca no input para usuário digitar
+    nextTick(() => {
+      const inputEl = document.querySelector<HTMLInputElement>('.v-field__input input');
+      if (inputEl) inputEl.focus();
+    });
+  } else {
+    // Comandos normais: envia diretamente
+    handleSendMessage(command);
+  }
   // Minimiza a barra de comandos
   showGuruCommands.value = false;
+}
+
+// 🤖 FUNÇÃO: Handler para quando um bot customizado é criado
+async function handleBotCreated(bot: { 
+  name: string; 
+  emoji: string; 
+  prompt: string; 
+  specialties: string[];
+  openaiApiKey: string;
+  openaiAccount?: string;
+}) {
+  try {
+    const response = await fetch(`${apiBaseUrl}/custom-bots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authStore.token}`
+      },
+      body: JSON.stringify({
+        name: bot.name,
+        emoji: bot.emoji,
+        prompt: bot.prompt,
+        specialties: bot.specialties,
+        openaiApiKey: bot.openaiApiKey,
+        openaiAccount: bot.openaiAccount
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Falha ao criar bot');
+    }
+    
+    const data = await response.json();
+    console.log('✅ Bot criado com sucesso:', data.bot);
+    
+    // TODO: Adicionar chip dinamicamente na barra de comandos
+    // TODO: Mostrar snackbar de sucesso
+  } catch (error) {
+    console.error('❌ Erro ao criar bot customizado:', error);
+    // TODO: Mostrar snackbar de erro
+  }
 }
 
 function closeDialog() {
@@ -764,12 +897,13 @@ async function handleAudioRecorded(audioBlob: Blob) {
 
 /* 🔘 Botão toggle do Guru */
 .guru-toggle-btn {
-  position: absolute;
+  position: fixed !important;
   bottom: 76px;
-  right: 12px;
+  right: 24px;
   z-index: 11;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   animation: bounce 2s infinite;
+  transition: all 0.2s ease;
 }
 
 @keyframes bounce {
@@ -816,7 +950,7 @@ async function handleAudioRecorded(audioBlob: Blob) {
   
   .guru-toggle-btn {
     bottom: 68px;
-    right: 10px;
+    right: 16px;
   }
 }
 
@@ -879,6 +1013,36 @@ async function handleAudioRecorded(audioBlob: Blob) {
 @media (hover: none) and (pointer: coarse) {
   .attach-btn:active .attach-icon {
     transform: rotate(135deg) scale(0.95);
+  }
+}
+
+/* 🤖 Botão de Criar Bot Personalizado */
+.custom-bot-btn {
+  position: fixed !important;
+  bottom: 140px;
+  right: 24px;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);
+  transition: all 0.2s ease;
+}
+
+.custom-bot-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(156, 39, 176, 0.4);
+}
+
+/* 📱 Mobile - Ajustes responsivos */
+@media (max-width: 599px) {
+  .custom-bot-btn {
+    bottom: 120px;
+    right: 16px;
+  }
+}
+
+/* 📱 Mobile - Efeito touch */
+@media (hover: none) and (pointer: coarse) {
+  .custom-bot-btn:active {
+    transform: scale(0.95);
   }
 }
 </style>

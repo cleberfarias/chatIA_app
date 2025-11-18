@@ -11,6 +11,13 @@ from storage import validate_upload, new_object_key, presign_put, presign_get, S
 from bots.core import is_command, run_command
 from bots.automations import start_scheduler, load_and_schedule_all, handle_keyword_if_matches
 from bots.ai_bot import ask_chatgpt, is_ai_question, clean_bot_mention, clear_conversation, get_conversation_count
+from bots.agents import (
+    detect_agent_mention, 
+    get_agent, 
+    clean_agent_mention, 
+    handle_agent_command,
+    list_all_agents
+)
 from transcription import transcribe_from_s3
 
 # FastAPI app
@@ -131,6 +138,94 @@ async def delete_automation(id: str):
 
 # Registra router de automações
 app.include_router(automations_router)
+
+# =====================================================
+# ROUTER: BOTS PERSONALIZADOS
+# =====================================================
+
+custom_bots_router = APIRouter(prefix="/custom-bots", tags=["custom-bots"])
+
+class CustomBotCreate(BaseModel):
+    """Schema para criação de bot personalizado"""
+    name: str = Field(..., min_length=3, max_length=50)
+    emoji: str = Field(default="🤖", max_length=4)
+    prompt: str = Field(..., min_length=50)
+    specialties: list[str] = Field(default_factory=list, max_items=5)
+    openaiApiKey: str = Field(..., min_length=20, alias="openaiApiKey")
+    openaiAccount: Optional[str] = Field(default=None, alias="openaiAccount")
+
+@custom_bots_router.post("")
+async def create_custom_bot(body: CustomBotCreate, request: Request):
+    """Cria um bot personalizado"""
+    from bots.agents import create_custom_agent
+    from auth import get_user_id_from_token
+    
+    # Extrai user_id do token (se autenticado)
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    user_id = get_user_id_from_token(token) if token else "anonymous"
+    
+    # Cria agente personalizado
+    agent = create_custom_agent(
+        user_id=user_id,
+        name=body.name,
+        emoji=body.emoji,
+        system_prompt=body.prompt,
+        specialties=body.specialties,
+        openai_api_key=body.openaiApiKey,
+        openai_account=body.openaiAccount
+    )
+    
+    return {
+        "success": True,
+        "bot": {
+            "name": agent.name,
+            "emoji": agent.emoji,
+            "key": agent.name.lower().replace(' ', ''),
+            "specialties": agent.specialties,
+            "createdAt": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+@custom_bots_router.get("")
+async def list_custom_bots(request: Request):
+    """Lista bots personalizados do usuário"""
+    from bots.agents import list_custom_agents
+    from auth import get_user_id_from_token
+    
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    user_id = get_user_id_from_token(token) if token else "anonymous"
+    
+    agents = list_custom_agents(user_id)
+    
+    return {
+        "bots": [
+            {
+                "name": agent.name,
+                "emoji": agent.emoji,
+                "key": agent.name.lower().replace(' ', ''),
+                "specialties": agent.specialties
+            }
+            for agent in agents
+        ]
+    }
+
+@custom_bots_router.delete("/{bot_key}")
+async def delete_custom_bot(bot_key: str, request: Request):
+    """Deleta um bot personalizado"""
+    from bots.agents import delete_custom_agent
+    from auth import get_user_id_from_token
+    
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    user_id = get_user_id_from_token(token) if token else "anonymous"
+    
+    success = delete_custom_agent(user_id, bot_key)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Bot não encontrado")
+    
+    return {"success": True, "message": "Bot deletado com sucesso"}
+
+app.include_router(custom_bots_router)
 
 # Registra router omnichannel
 try:
@@ -543,8 +638,18 @@ async def handle_chat_send(sid, data):
 🛠️ **Utilitários:**
 • `/limpar` - Limpar histórico
 • `/resumo` - Resumo da conversa
-• `/ajuda` - Esta mensagem"""
+• `/ajuda` - Esta mensagem
+
+🤖 **Agentes Especializados:**
+• `/agentes` - Ver todos os agentes disponíveis
+• `@advogado`, `@vendedor`, `@medico`, `@psicologo` - Falar com especialistas"""
                 await publish_message(sio.emit, author="Guru 📚", text=help_text, user_id=user_id, target_sid=sid)
+                return
+            
+            # Comando /agentes - Lista todos os agentes especializados
+            if text.lower() in ["/agentes", "/agents"]:
+                agents_list = list_all_agents()
+                await publish_message(sio.emit, author="Sistema 🤖", text=agents_list, user_id=user_id, target_sid=sid)
                 return
             
             # Comando /contexto - Mostra quantidade de mensagens no histórico
@@ -629,6 +734,88 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
             if reply:
                 await publish_message(sio.emit, author="Guru", text=reply, user_id=user_id, target_sid=sid)
             return
+        
+        # 🤖 SISTEMA DE AGENTES ESPECIALIZADOS
+        agent_name = detect_agent_mention(text)
+        if agent_name:
+            agent = get_agent(agent_name, user_id)  # Passa user_id para buscar bots personalizados
+            if agent:
+                import asyncio
+                from bots.automations import publish_message
+                
+                # Remove menção do agente
+                clean_text = clean_agent_mention(text, agent_name)
+                
+                # Se é comando específico do agente
+                if clean_text.startswith("/"):
+                    response = await handle_agent_command(agent, clean_text, user_id, author)
+                    await publish_message(
+                        sio.emit,
+                        author=agent.get_display_name(),
+                        text=response,
+                        user_id=user_id,
+                        target_sid=sid
+                    )
+                    return
+                
+                # Se é pergunta para o agente
+                if clean_text:
+                    # Envia indicador de digitação
+                    await sio.emit("chat:typing", {
+                        "author": agent.name,
+                        "isTyping": True
+                    }, room=sid)
+                    
+                    # Tempo variável baseado na complexidade
+                    question_length = len(clean_text)
+                    if question_length > 100:
+                        thinking_time = 1.5
+                    elif question_length > 50:
+                        thinking_time = 1.0
+                    else:
+                        thinking_time = 0.7
+                    
+                    await asyncio.sleep(thinking_time)
+                    
+                    # Processa pergunta com o agente
+                    agent_response = await agent.ask(clean_text, user_id, author)
+                    
+                    # Simula digitação
+                    typing_time = len(agent_response) / 60  # ~60 caracteres por segundo
+                    typing_time = max(1.0, min(typing_time, 4.0))
+                    await asyncio.sleep(typing_time)
+                    
+                    # Remove indicador
+                    await sio.emit("chat:typing", {
+                        "author": agent.name,
+                        "isTyping": False
+                    }, room=sid)
+                    
+                    # Publica resposta
+                    await publish_message(
+                        sio.emit,
+                        author=agent.get_display_name(),
+                        text=agent_response,
+                        user_id=user_id,
+                        target_sid=sid
+                    )
+                    return
+                else:
+                    # Apenas @agente sem pergunta - mostra apresentação
+                    intro = f"👋 Olá! Sou {agent.get_display_name()}\n\n"
+                    intro += f"**Minhas especialidades:**\n"
+                    for specialty in agent.specialties:
+                        intro += f"• {specialty}\n"
+                    intro += f"\n💡 _Faça sua pergunta ou use @{agent_name} /ajuda para ver comandos_"
+                    
+                    await publish_message(
+                        sio.emit,
+                        author=agent.get_display_name(),
+                        text=intro,
+                        user_id=user_id,
+                        target_sid=sid
+                    )
+                    return
         
         # 🧠 VERIFICA SE É INTERAÇÃO COM GURU (não salva essas mensagens)
         text_lower = text.lower().strip()
