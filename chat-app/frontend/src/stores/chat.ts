@@ -28,27 +28,52 @@ export const useChatStore = defineStore('chat', {
 
   actions: {
     /**
-     * 🔌 Conecta ao servidor Socket.IO
+     * 🔌 Conecta ao servidor Socket.IO com autenticação JWT
      */
     async connect(token: string) {
-      if (this.socket?.connected) return;
+      if (this.socket?.connected) {
+        console.log('✅ Socket já conectado');
+        return;
+      }
+
+      if (!token) {
+        console.error('❌ Token JWT não fornecido');
+        throw new Error('Token JWT obrigatório para conexão');
+      }
+
+      console.log('🔌 Conectando ao Socket.IO com token JWT...');
 
       this.socket = io(API_URL, {
         auth: { token },
         transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
       });
 
       // ✅ Evento: Conectado
       this.socket.on('connect', () => {
-        console.log('✅ Socket conectado');
+        console.log('✅ Socket conectado com sucesso');
         this.connected = true;
         this.retryPendingMessages(); // Tenta reenviar mensagens pendentes
       });
 
       // ❌ Evento: Desconectado
-      this.socket.on('disconnect', () => {
-        console.log('❌ Socket desconectado');
+      this.socket.on('disconnect', (reason: string) => {
+        console.log('❌ Socket desconectado:', reason);
         this.connected = false;
+      });
+
+      // ❌ Evento: Erro de conexão
+      this.socket.on('connect_error', (error: Error) => {
+        console.error('❌ Erro ao conectar:', error.message);
+        
+        // Se erro de autenticação, lança exceção para redirecionar ao login
+        if (error.message.includes('invalid') || error.message.includes('unauthorized')) {
+          console.warn('⚠️ Token inválido, necessário relogin');
+          this.connected = false;
+          throw new Error('Autenticação inválida');
+        }
       });
 
       // 📨 Evento: Nova mensagem de outro usuário

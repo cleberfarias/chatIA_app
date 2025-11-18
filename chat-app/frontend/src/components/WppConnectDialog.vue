@@ -186,7 +186,7 @@ async function startQrPolling() {
         }
         loading.value = false;
         previousQrCode.value = qr;
-        previousUpdate.value = last_update;
+        previousUpdate.value = lastUpdateNum;
         
         console.log(`✅ QR Code atualizado! Timestamp: ${last_update}`);
       }

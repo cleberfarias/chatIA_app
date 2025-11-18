@@ -188,7 +188,7 @@ const chatStore = useChatStore();
 const authStore = useAuthStore();
 const author = ref('');
 const text = ref('');
-const showNameDialog = ref(true);
+const showNameDialog = ref(false); // Não mostra mais o dialog de nome
 const isScrolledToBottom = ref(true);
 const lastScrollTop = ref(0);
 const showAttachmentMenu = ref(false);
@@ -200,10 +200,12 @@ const uploadProgress = ref(0);
 
 const { containerRef, scrollToBottom } = useScrollToBottom();
 
+// Carrega autenticação do localStorage
+authStore.load();
+
 // Define o nome do autor baseado no usuário autenticado
 if (authStore.user) {
   author.value = authStore.user.name;
-  showNameDialog.value = false;
 }
 
 // 🆕 COMPUTED: Agrupa mensagens por data e autor
@@ -252,15 +254,32 @@ const unreadCount = computed(() => {
 
 // Conecta ao socket e carrega histórico ao montar
 onMounted(async () => {
+  console.log('📱 ChatView mounted');
+  
+  // Carrega autenticação do localStorage (pode já estar carregado pelo router)
+  authStore.load();
+  
+  // Verifica se tem token válido
+  if (!authStore.token) {
+    console.warn('⚠️ Sem token, redirecionando para login...');
+    router.push('/login');
+    return;
+  }
+  
   // Define o nome do usuário no store
   if (author.value) {
     chatStore.currentUser = author.value;
   }
   
-  // Conecta ao socket (já carrega mensagens internamente)
-  if (authStore.token) {
+  try {
+    // Conecta ao socket com token JWT (já carrega mensagens internamente)
     await chatStore.connect(authStore.token);
     scrollToBottom();
+    console.log('✅ Socket conectado e mensagens carregadas');
+  } catch (error) {
+    console.error('❌ Erro ao conectar socket:', error);
+    // Se falhar autenticação, redireciona para login
+    router.push('/login');
   }
 });
 

@@ -380,12 +380,22 @@ async def connect(sid, environ, auth):
         payload = decode_token(token)
         
         user_id = payload["sub"]
+        
+        # Verifica se usuário existe no banco
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            print(f"❌ Usuário não encontrado: {user_id} - {sid}")
+            return False
+        
+        # Armazena dados no ambiente do socket
         environ["user_id"] = user_id
-        active_sessions[sid] = user_id # registra sessão ativa
+        environ["user_name"] = user.get("name", "Usuário")
+        environ["user_email"] = user.get("email", "")
         
+        # Registra sessão ativa
+        active_sessions[sid] = user_id
         
-        # Armazena userId no ambiente do socket
-        print(f"✅ Socket autenticado: {payload['sub']} (sid: {sid})")
+        print(f"✅ Socket autenticado: {user.get('name')} ({user_id}) - sid: {sid}")
         return True
         
     except Exception as e:
