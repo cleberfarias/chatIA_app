@@ -302,6 +302,46 @@ async def get_messages(
 
 
 # ============================================================================
+# 🤖 ENDPOINTS DE MENSAGENS DOS AGENTES
+# ============================================================================
+
+@app.get("/agents/{agent_key}/messages")
+async def get_agent_messages(
+    agent_key: str,
+    before: Optional[int] = None,
+    limit: int = Query(default=30, le=100)
+):
+    """
+    Retorna histórico de mensagens de um agente específico.
+    """
+    from database import agent_messages_collection
+    
+    query = {"agentKey": agent_key}
+    
+    if before:
+        before_dt = datetime.fromtimestamp(before / 1000)
+        query["createdAt"] = {"$lt": before_dt}
+    
+    cursor = agent_messages_collection.find(query).sort("createdAt", -1).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    
+    messages = []
+    for doc in reversed(docs):
+        messages.append({
+            "id": str(doc["_id"]),
+            "author": doc["author"],
+            "text": doc["text"],
+            "timestamp": int(doc["createdAt"].timestamp() * 1000),
+            "agentKey": doc["agentKey"]
+        })
+    
+    return {
+        "messages": messages,
+        "hasMore": len(docs) == limit
+    }
+
+
+# ============================================================================
 # WEBHOOKS - Recebimento de mensagens externas
 # ============================================================================
 
@@ -741,81 +781,67 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
             agent = get_agent(agent_name, user_id)  # Passa user_id para buscar bots personalizados
             if agent:
                 import asyncio
-                from bots.automations import publish_message
+                from database import agent_messages_collection
                 
                 # Remove menção do agente
                 clean_text = clean_agent_mention(text, agent_name)
                 
+                # 💾 Salva pergunta do usuário na collection de agentes
+                user_msg_doc = {
+                    "_id": ObjectId(),
+                    "agentKey": agent_name,
+                    "author": author,
+                    "text": clean_text if clean_text else f"@{agent_name}",
+                    "userId": user_id,
+                    "createdAt": datetime.now(timezone.utc)
+                }
+                await agent_messages_collection.insert_one(user_msg_doc)
+                
+                # Emite mensagem do usuário apenas para este sid
+                await sio.emit("agent:message", {
+                    "id": str(user_msg_doc["_id"]),
+                    "agentKey": agent_name,
+                    "author": author,
+                    "text": clean_text if clean_text else f"@{agent_name}",
+                    "timestamp": int(user_msg_doc["createdAt"].timestamp() * 1000)
+                }, room=sid)
+                
                 # Se é comando específico do agente
                 if clean_text.startswith("/"):
                     response = await handle_agent_command(agent, clean_text, user_id, author)
-                    await publish_message(
-                        sio.emit,
-                        author=agent.get_display_name(),
-                        text=response,
-                        user_id=user_id,
-                        target_sid=sid
-                    )
-                    return
-                
-                # Se é pergunta para o agente
-                if clean_text:
-                    # Envia indicador de digitação
-                    await sio.emit("chat:typing", {
-                        "author": agent.name,
-                        "isTyping": True
-                    }, room=sid)
-                    
-                    # Tempo variável baseado na complexidade
-                    question_length = len(clean_text)
-                    if question_length > 100:
-                        thinking_time = 1.5
-                    elif question_length > 50:
-                        thinking_time = 1.0
-                    else:
-                        thinking_time = 0.7
-                    
-                    await asyncio.sleep(thinking_time)
-                    
-                    # Processa pergunta com o agente
-                    agent_response = await agent.ask(clean_text, user_id, author)
-                    
-                    # Simula digitação
-                    typing_time = len(agent_response) / 60  # ~60 caracteres por segundo
-                    typing_time = max(1.0, min(typing_time, 4.0))
-                    await asyncio.sleep(typing_time)
-                    
-                    # Remove indicador
-                    await sio.emit("chat:typing", {
-                        "author": agent.name,
-                        "isTyping": False
-                    }, room=sid)
-                    
-                    # Publica resposta
-                    await publish_message(
-                        sio.emit,
-                        author=agent.get_display_name(),
-                        text=agent_response,
-                        user_id=user_id,
-                        target_sid=sid
-                    )
-                    return
                 else:
-                    # Apenas @agente sem pergunta - mostra apresentação
-                    intro = f"👋 Olá! Sou {agent.get_display_name()}\n\n"
-                    intro += f"**Minhas especialidades:**\n"
-                    for specialty in agent.specialties:
-                        intro += f"• {specialty}\n"
-                    intro += f"\n💡 _Faça sua pergunta ou use @{agent_name} /ajuda para ver comandos_"
-                    
-                    await publish_message(
-                        sio.emit,
-                        author=agent.get_display_name(),
-                        text=intro,
-                        user_id=user_id,
-                        target_sid=sid
-                    )
-                    return
+                    # Se é pergunta para o agente
+                    if clean_text:
+                        # Processa pergunta com o agente (sem indicadores de digitação)
+                        response = await agent.ask(clean_text, user_id, author)
+                    else:
+                        # Apenas @agente sem pergunta - mostra apresentação
+                        response = f"👋 Olá! Sou {agent.get_display_name()}\n\n"
+                        response += f"**Minhas especialidades:**\n"
+                        for specialty in agent.specialties:
+                            response += f"• {specialty}\n"
+                        response += f"\n💡 _Faça sua pergunta ou use @{agent_name} /ajuda para ver comandos_"
+                
+                # 💾 Salva resposta do agente
+                agent_msg_doc = {
+                    "_id": ObjectId(),
+                    "agentKey": agent_name,
+                    "author": agent.get_display_name(),
+                    "text": response,
+                    "userId": user_id,
+                    "createdAt": datetime.now(timezone.utc)
+                }
+                await agent_messages_collection.insert_one(agent_msg_doc)
+                
+                # Emite resposta apenas para este sid
+                await sio.emit("agent:message", {
+                    "id": str(agent_msg_doc["_id"]),
+                    "agentKey": agent_name,
+                    "author": agent.get_display_name(),
+                    "text": response,
+                    "timestamp": int(agent_msg_doc["createdAt"].timestamp() * 1000)
+                }, room=sid)
+                return
         
         # 🧠 VERIFICA SE É INTERAÇÃO COM GURU (não salva essas mensagens)
         text_lower = text.lower().strip()

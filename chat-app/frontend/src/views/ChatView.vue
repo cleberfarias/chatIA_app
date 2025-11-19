@@ -284,7 +284,7 @@
         v-model="text"
         :uploading="uploadingFile"
         :upload-progress="uploadProgress"
-        @submit="handleSendMessage"
+        @submit="(msg) => { console.log('📤 DSChatInput @submit:', msg); handleSendMessage(msg); }"
         @typing="handleTyping"
         @emoji="() => {}"
         @voice="showVoiceRecorder = true"
@@ -331,36 +331,6 @@
       @bot-created="handleBotCreated"
     />
 
-    <!-- Agent panes (chat-in-chat) -->
-    <div class="agent-panes-wrapper" v-if="agentTabs.length">
-      <div class="agent-panes-tabs">
-        <div
-          v-for="tab in agentTabs"
-          :key="tab.key"
-          :class="['agent-tab', { active: tab.key === activeAgentKey }]"
-          @click="activeAgentKey = tab.key"
-        >
-          <span class="tab-emoji">{{ tab.emoji }}</span>
-          <span class="tab-title">{{ tab.title }}</span>
-          <v-btn icon size="x-small" variant="text" @click.stop="closeAgentTab(tab.key)">
-            <v-icon size="14">mdi-close</v-icon>
-          </v-btn>
-        </div>
-      </div>
-
-      <div class="agent-panes-content">
-        <AgentChatPane
-          v-for="tab in agentTabs"
-          :key="tab.key + '-pane'"
-          v-show="tab.key === activeAgentKey"
-          :agentKey="tab.key"
-          :title="tab.title"
-          :emoji="tab.emoji"
-          @close="closeAgentTab"
-        />
-      </div>
-    </div>
-
     <!-- DIALOG PARA NOME DO USUÁRIO -->
     <v-dialog v-model="showNameDialog" max-width="400" persistent>
       <v-card>
@@ -390,6 +360,38 @@
 
     <!-- Dialog de Conexão WPPConnect -->
     <WppConnectDialog v-model="showWppConnectDialog" session="default" />
+
+    <!-- 🔥 Painéis de Agente Abertos (Chat-in-Chat Flutuantes) -->
+    <AgentChatPane
+      v-for="(panel, index) in agentPanels.filter(p => !p.minimized)"
+      :key="panel.key"
+      :agent-key="panel.key"
+      :title="panel.title"
+      :emoji="panel.emoji"
+      :stack-index="index"
+      @close="closeAgentPanel(panel.key)"
+      @minimize="minimizeAgentPanel(panel.key)"
+    />
+
+    <!-- 🔥 Abas de Agentes Minimizados (Barra Inferior) -->
+    <div v-if="agentPanels.filter(p => p.minimized).length > 0" class="minimized-agents-bar">
+      <div
+        v-for="panel in agentPanels.filter(p => p.minimized)"
+        :key="`min-${panel.key}`"
+        class="minimized-agent-tab"
+        @click="openAgentPanel(panel.key, panel.title, panel.emoji)"
+      >
+        <span class="tab-emoji">{{ panel.emoji || '🤖' }}</span>
+        <span class="tab-name">{{ panel.title.split(' ')[0] }}</span>
+        <button 
+          @click.stop="closeAgentPanel(panel.key)" 
+          class="tab-close"
+          title="Fechar"
+        >
+          <v-icon size="x-small">mdi-close</v-icon>
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -442,36 +444,9 @@ const uploadingFile = ref(false);
 const uploadProgress = ref(0);
 
 const { containerRef, scrollToBottom } = useScrollToBottom();
-// 🆕 Agent panes state (chat-in-chat)
-const agentTabs = ref<Array<{ key: string; title: string; emoji?: string }>>([]);
-const activeAgentKey = ref<string | null>(null);
-const previousContactId = ref<string | null>(null);
 
-function openAgentChat(agentKey: string, title: string, emoji?: string) {
-  // Se já existe a aba, apenas ativa
-  const exists = agentTabs.value.find(t => t.key === agentKey);
-  if (!exists) {
-    agentTabs.value.push({ key: agentKey, title, emoji });
-  }
-  activeAgentKey.value = agentKey;
-
-  // Evita que mensagens do agente poluam o chat principal
-  previousContactId.value = chatStore.currentContactId;
-  chatStore.currentContactId = `__agent__${agentKey}`;
-}
-
-function closeAgentTab(agentKey: string) {
-  agentTabs.value = agentTabs.value.filter(t => t.key !== agentKey);
-  if (activeAgentKey.value === agentKey) {
-    activeAgentKey.value = agentTabs.value.length ? agentTabs.value[agentTabs.value.length - 1].key : null;
-  }
-
-  // Restaura contactId anterior se não houver abas abertas
-  if (!agentTabs.value.length) {
-    chatStore.currentContactId = previousContactId.value || null;
-    previousContactId.value = null;
-  }
-}
+// 🆕 Estado para painéis de agente (chat-in-chat)
+const agentPanels = ref<Array<{ key: string; title: string; emoji?: string; minimized?: boolean }>>([]);
 
 // Carrega autenticação do localStorage
 authStore.load();
@@ -665,6 +640,32 @@ function handleTyping(isTyping: boolean) {
 function handleSendMessage(messageText: string) {
   if (!messageText.trim()) return;
   
+  // ⚠️ INTERCEPTA menções a agentes (ex: @advogado) e abre painel em vez de enviar
+  if (messageText.startsWith('@')) {
+    const agentKey = messageText.replace('@', '').trim().split(' ')[0];
+    console.log('🔍 Detectado comando:', messageText, '→ agentKey:', agentKey);
+    
+    if (!agentKey) {
+      console.warn('⚠️ agentKey vazio');
+      return;
+    }
+    
+    // Mapeia agentes conhecidos
+    const agentMap: Record<string, { title: string; emoji: string }> = {
+      'advogado': { title: 'Dr. Advocatus', emoji: '⚖️' },
+      'vendedor': { title: 'Vendedor Pro', emoji: '💼' },
+      'medico': { title: 'Dr. Saúde', emoji: '🩺' },
+      'psicologo': { title: 'Psicólogo', emoji: '🧘' },
+      'guru': { title: 'Guru IA', emoji: '🧠' }
+    };
+    
+    const agent = agentMap[agentKey.toLowerCase()] || { title: agentKey, emoji: '🤖' };
+    console.log('✅ Abrindo painel:', agentKey, agent);
+    openAgentPanel(agentKey, agent.title, agent.emoji);
+    text.value = ''; // Limpa o input
+    return; // ⚠️ NÃO envia ao chat principal
+  }
+  
   // Define o nome do usuário antes de enviar
   if (author.value) {
     chatStore.currentUser = author.value;
@@ -677,30 +678,70 @@ function handleSendMessage(messageText: string) {
 
 // 🧠 FUNÇÃO: Insere comando do Guru no input e envia automaticamente
 function insertCommand(command: string) {
-  // Se for menção de agente (começa com @), abre aba do agente (chat-in-chat)
+  // Se for menção de agente (começa com @), abre painel lateral SEM enviar ao chat
   if (command.startsWith('@')) {
     const agentKey = command.replace('@', '').trim().split(' ')[0];
-    // Mapeia chaves comuns para títulos/emoji (pode expandir dinamicamente)
-    const map: Record<string, { title: string; emoji?: string }> = {
-      'advogado': { title: 'Advogado ⚖️', emoji: '⚖️' },
-      'vendedor': { title: 'Vendedor 💼', emoji: '💼' },
-      'medico': { title: 'Médico 🩺', emoji: '🩺' },
-      'psicologo': { title: 'Psicólogo 🧘', emoji: '🧘' },
-      'guru': { title: 'Guru 🧠', emoji: '🧠' }
+    console.log('🔍 insertCommand:', command, '→ agentKey:', agentKey);
+    
+    if (!agentKey) {
+      console.warn('⚠️ agentKey vazio no insertCommand');
+      return;
+    }
+    
+    // Mapeia agentes conhecidos
+    const agentMap: Record<string, { title: string; emoji: string }> = {
+      'advogado': { title: 'Dr. Advocatus', emoji: '⚖️' },
+      'vendedor': { title: 'Vendedor Pro', emoji: '💼' },
+      'medico': { title: 'Dr. Saúde', emoji: '🩺' },
+      'psicologo': { title: 'Psicólogo', emoji: '🧘' },
+      'guru': { title: 'Guru IA', emoji: '🧠' }
     };
-
-    const info = map[agentKey.toLowerCase()] || { title: agentKey, emoji: '🤖' };
-    openAgentChat(agentKey, info.title, info.emoji);
-    // Fecha a barra de comandos
+    
+    const agent = agentMap[agentKey.toLowerCase()] || { title: agentKey, emoji: '🤖' };
+    console.log('✅ Abrindo painel (insertCommand):', agentKey, agent);
+    openAgentPanel(agentKey, agent.title, agent.emoji);
     showGuruCommands.value = false;
-    // Não coloca texto no input
-    return;
+    return; // ⚠️ NÃO envia mensagem ao chat principal
   }
-
+  
   // Comandos normais: envia diretamente
   handleSendMessage(command);
-  // Minimiza a barra de comandos
   showGuruCommands.value = false;
+}
+
+// 🆕 FUNÇÕES: Gerenciamento de painéis de agente
+function openAgentPanel(key: string, title: string, emoji?: string) {
+  console.log('📂 openAgentPanel chamado:', { key, title, emoji });
+  
+  // Verifica se já existe (aberto ou minimizado)
+  const existing = agentPanels.value.find(p => p.key === key);
+  if (existing) {
+    console.log('🔄 Painel já existe, maximizando:', key);
+    // Se existe mas está minimizado, maximiza
+    existing.minimized = false;
+  } else {
+    console.log('➕ Criando novo painel:', key);
+    // Se não existe, adiciona novo painel
+    agentPanels.value.push({ key, title, emoji, minimized: false });
+  }
+  
+  console.log('📋 Estado atual dos painéis:', agentPanels.value);
+}
+
+function closeAgentPanel(key: string) {
+  console.log('❌ Fechando painel:', key);
+  agentPanels.value = agentPanels.value.filter(p => p.key !== key);
+}
+
+function minimizeAgentPanel(key: string) {
+  console.log('➖ Minimizando painel:', key);
+  const panel = agentPanels.value.find(p => p.key === key);
+  if (panel) {
+    panel.minimized = true;
+    console.log('✅ Painel minimizado:', key);
+  } else {
+    console.warn('⚠️ Painel não encontrado para minimizar:', key);
+  }
 }
 
 // 🤖 FUNÇÃO: Handler para quando um bot customizado é criado
@@ -802,7 +843,7 @@ async function handleAudioRecorded(audioBlob: Blob) {
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   width: 100%;
   overflow: hidden;
   position: relative;
@@ -821,7 +862,7 @@ async function handleAudioRecorded(audioBlob: Blob) {
 }
 
 /* 📱 Mobile - Padding ajustado */
-@media (max-width: 599px) {
+@media (max-width: 959px) {
   .messages-wrapper {
     padding-bottom: 90px;
   }
@@ -862,7 +903,7 @@ async function handleAudioRecorded(audioBlob: Blob) {
 }
 
 .chat-input-wrapper {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
@@ -1117,41 +1158,80 @@ async function handleAudioRecorded(audioBlob: Blob) {
   }
 }
 
-/* ===== Agent panes (chat-in-chat) ===== */
-.agent-panes-wrapper {
-  position: fixed;
-  top: 80px;
+/* 🔥 Barra de Agentes Minimizados */
+.minimized-agents-bar {
+  position: absolute;
+  bottom: 76px;
   right: 24px;
-  z-index: 120;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-.agent-panes-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 6px;
-}
-.agent-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: #fff;
-  padding: 6px 8px;
-  border-radius: 16px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-  cursor: pointer;
-}
-.agent-tab.active {
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-}
-.agent-panes-content {
-  display: flex;
-  gap: 8px;
+  z-index: 999;
 }
 
-@media (max-width: 959px) {
-  .agent-panes-wrapper { right: 12px; top: 64px }
+.minimized-agent-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s;
+  max-width: 140px;
+}
+
+.minimized-agent-tab:hover {
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.tab-emoji {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.tab-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: #999;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.tab-close:hover {
+  color: #f44336;
+}
+
+@media (max-width: 599px) {
+  .minimized-agents-bar {
+    bottom: 68px;
+    right: 16px;
+  }
+  
+  .minimized-agent-tab {
+    max-width: 100px;
+    padding: 8px 10px;
+  }
+  
+  .tab-emoji {
+    font-size: 16px;
+  }
+  
+  .tab-name {
+    font-size: 12px;
+  }
 }
 </style>

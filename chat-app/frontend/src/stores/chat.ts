@@ -82,6 +82,37 @@ export const useChatStore = defineStore('chat', {
         console.log('📨 Nova mensagem recebida:', msg);
         console.log('🔍 currentContactId:', this.currentContactId, 'msg.userId:', msg.userId, 'msg.contactId:', msg.contactId);
         
+        // 🚫 FILTRA mensagens de/para agentes (não aparecem no chat principal)
+        const msgText = String(msg.text || '').toLowerCase();
+        const msgAuthor = String(msg.author || '').toLowerCase();
+        
+        console.log('🔍 Verificando se é mensagem de agente:', { text: msgText, author: msgAuthor });
+        
+        const isAgentMessage = 
+          msgText.startsWith('@advogado') || 
+          msgText.startsWith('@medico') || 
+          msgText.startsWith('@médico') || 
+          msgText.startsWith('@psicologo') || 
+          msgText.startsWith('@psicólogo') || 
+          msgText.startsWith('@vendedor') || 
+          msgText.startsWith('@guru') ||
+          msgAuthor.includes('advocatus') ||
+          msgAuthor.includes('advogado') ||
+          msgAuthor.includes('saúde') ||
+          msgAuthor.includes('saude') ||
+          msgAuthor.includes('health') ||
+          msgAuthor.includes('psicólogo') ||
+          msgAuthor.includes('psicologo') ||
+          msgAuthor.includes('vendedor') ||
+          msgAuthor.includes('guru') ||
+          msgAuthor.startsWith('dr.') ||
+          msgAuthor.startsWith('dr ');
+        
+        if (isAgentMessage) {
+          console.log('🤖 Mensagem de agente detectada, ignorando no chat principal:', msg);
+          return; // NÃO adiciona ao chat principal
+        }
+        
         // 🆕 Verifica se mensagem é do contato que está conversando
         // Mensagem pertence à conversa atual se:
         // - Mensagem VEIO do contato selecionado (msg.userId === currentContactId)
@@ -229,12 +260,38 @@ export const useChatStore = defineStore('chat', {
         const res = await fetch(url.toString());
         const data = await res.json();
 
+        // 🚫 Filtra mensagens de agentes
+        const filteredMessages = (data.messages || []).filter((msg: Message) => {
+          const msgText = String(msg.text || '').toLowerCase();
+          const msgAuthor = String(msg.author || '').toLowerCase();
+          const isAgentMessage = 
+            msgText.startsWith('@advogado') || 
+            msgText.startsWith('@medico') || 
+            msgText.startsWith('@médico') || 
+            msgText.startsWith('@psicologo') || 
+            msgText.startsWith('@psicólogo') || 
+            msgText.startsWith('@vendedor') || 
+            msgText.startsWith('@guru') ||
+            msgAuthor.includes('advocatus') ||
+            msgAuthor.includes('advogado') ||
+            msgAuthor.includes('saúde') ||
+            msgAuthor.includes('saude') ||
+            msgAuthor.includes('health') ||
+            msgAuthor.includes('psicólogo') ||
+            msgAuthor.includes('psicologo') ||
+            msgAuthor.includes('vendedor') ||
+            msgAuthor.includes('guru') ||
+            msgAuthor.startsWith('dr.') ||
+            msgAuthor.startsWith('dr ');
+          return !isAgentMessage;
+        });
+
         if (before) {
           // Paginação: adiciona no início
-          this.messages = [...data.messages, ...this.messages];
+          this.messages = [...filteredMessages, ...this.messages];
         } else {
           // Carregamento inicial
-          this.messages = data.messages;
+          this.messages = filteredMessages;
         }
 
         this.hasMoreMessages = data.hasMore;

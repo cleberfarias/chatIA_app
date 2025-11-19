@@ -7,3 +7,6 @@ DATABASE_URL = getenv("DATABASE_URL", "mongodb://mongo:27017/chatdb?replicaSet=r
 client = AsyncIOMotorClient(DATABASE_URL)
 db = client.chatdb
 messages_collection = db.messages
+
+# 🤖 Collection separada para mensagens dos agentes
+agent_messages_collection = db.agent_messages
