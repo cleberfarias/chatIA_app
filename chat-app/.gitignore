@@ -52,3 +52,22 @@ backend-nodejs-backup/
 
 # WPPConnect Server (clonado)
 wppconnect-server/
+
+# Python virtual environments and bytecode
+.venv/
+venv/
+*.py[cod]
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/*
+.coverage
+coverage/
+*.sqlite3
+
+# OS and editor
+Thumbs.db
+ehthumbs.db
+desktop.ini
+*.swp
+*~
