@@ -14,6 +14,9 @@ Esta pasta contém documentações específicas sobre recursos e configurações
 - **[UPLOAD_SYSTEM.md](UPLOAD_SYSTEM.md)** - Sistema de upload com MinIO/S3, presigned URLs, validação de arquivos
 - **[MINIO_CORS_SETUP.md](MINIO_CORS_SETUP.md)** - Configuração de CORS no MinIO para upload direto do browser
 
+### Arquitetura
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Diagrama visual da topologia (frontend, FastAPI/Socket.IO, MongoDB, MinIO, IA e integrações)
+
 ### Integrações
 - **[WHATSAPP_SETUP.md](WHATSAPP_SETUP.md)** - Integração com WhatsApp Web via wppconnect, QR Code, webhooks
 

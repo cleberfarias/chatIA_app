@@ -51,6 +51,44 @@ Este projeto é licenciado sob **AGPL-3.0** com termos adicionais de proteção:
 - ✅ **Bots Personalizados** com credenciais OpenAI individuais
 - ✅ **IA Conversacional** integrada ao chat (@guru, @advogado, @vendedor, @medico, @psicologo)
 
+## 🗺️ Arquitetura Visual
+
+O diagrama abaixo mostra como frontend, backend e serviços de apoio se conectam. Veja a versão detalhada em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+```mermaid
+flowchart TB
+    subgraph Client[Cliente - Vue 3 + Vuetify]
+        UI[UI + Pinia + Router\nSocket.IO client]
+    end
+
+    subgraph Backend[Backend - FastAPI + Socket.IO]
+        API[REST: auth, contatos, mensagens, uploads, bots, webhooks]
+        WS[Eventos Socket.IO\nchat:new-message / typing / read]
+        SCHED[Agendador de automações\n(bots e rotinas)]
+    end
+
+    subgraph Data[Infra]
+        DB[(MongoDB\nreplica set)]
+        S3[(MinIO / S3\nURLs pré-assinadas)]
+        LLM[(OpenAI/LLMs\npara agentes IA)]
+        WA[(WhatsApp integração\nwebhook/selenium)]
+    end
+
+    UI -- "HTTP (login, uploads, histórico)" --> API
+    UI <-->|"Socket.IO"| WS
+    UI -. "Upload PUT direto" .-> S3
+
+    API --> DB
+    WS --> DB
+    API --> S3
+    WS -. "presigned URL" .-> UI
+
+    API --> LLM
+    SCHED --> LLM
+    API --> WA
+    WS --> WA
+```
+
 ## 📋 Pré-requisitos
 
 - [Docker](https://www.docker.com/) e Docker Compose (recomendado)
