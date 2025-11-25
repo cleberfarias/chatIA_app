@@ -13,5 +13,12 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
+  },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        additionalData: '@use "@/design-system/styles/mixins" as mixins;\n'
+      }
+    }
   }
 })

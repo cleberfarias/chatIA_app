@@ -1,0 +1,93 @@
+@use "sass:map";
+
+$ds-shadows: (
+  none: var(--ds-shadow-none),
+  sm: var(--ds-shadow-sm),
+  md: var(--ds-shadow-md),
+  lg: var(--ds-shadow-lg),
+  xl: var(--ds-shadow-xl)
+);
+
+$ds-radius: (
+  none: var(--ds-radius-none),
+  sm: var(--ds-radius-sm),
+  md: var(--ds-radius-md),
+  lg: var(--ds-radius-lg),
+  xl: var(--ds-radius-xl),
+  full: var(--ds-radius-full)
+);
+
+$ds-breakpoints: (
+  xs: var(--ds-breakpoint-xs),
+  sm: var(--ds-breakpoint-sm),
+  md: var(--ds-breakpoint-md),
+  lg: var(--ds-breakpoint-lg),
+  xl: var(--ds-breakpoint-xl)
+);
+
+@function ds-shadow($level) {
+  @if map.has-key($ds-shadows, $level) {
+    @return map.get($ds-shadows, $level);
+  }
+
+  @warn 'Shadow level not found. Falling back to md.';
+  @return map.get($ds-shadows, md);
+}
+
+@function ds-radius($size) {
+  @if map.has-key($ds-radius, $size) {
+    @return map.get($ds-radius, $size);
+  }
+
+  @warn 'Radius size not found. Falling back to md.';
+  @return map.get($ds-radius, md);
+}
+
+@mixin ds-elevation($level: md) {
+  box-shadow: ds-shadow($level);
+}
+
+@mixin ds-rounded($size: md) {
+  border-radius: ds-radius($size);
+}
+
+@mixin ds-scrollbar(
+  $thumb: rgba(0, 0, 0, 0.2),
+  $track: rgba(0, 0, 0, 0.05),
+  $width: 8px
+) {
+  scrollbar-width: thin;
+  scrollbar-color: $thumb $track;
+
+  &::-webkit-scrollbar {
+    width: $width;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: $track;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $thumb;
+    border-radius: 9999px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
+@mixin ds-safe-area-bottom($gap: 0px) {
+  padding-bottom: calc(#{$gap} + env(safe-area-inset-bottom));
+}
+
+@mixin ds-responsive($breakpoint) {
+  @if map.has-key($ds-breakpoints, $breakpoint) {
+    $value: map.get($ds-breakpoints, $breakpoint);
+    @media (min-width: #{$value}) {
+      @content;
+    }
+  } @else {
+    @warn 'Breakpoint not found.';
+  }
+}

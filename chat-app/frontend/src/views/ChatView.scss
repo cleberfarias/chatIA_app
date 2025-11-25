@@ -1,0 +1,262 @@
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  background: var(--ds-color-chat-background);
+}
+
+.messages-wrapper {
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.messages-area {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md) 140px var(--ds-spacing-md);
+}
+
+@media (min-width: 600px) {
+  .messages-area {
+    padding: var(--ds-spacing-lg) var(--ds-spacing-lg) 160px var(--ds-spacing-lg);
+  }
+}
+
+@media (min-width: 960px) {
+  .messages-area {
+    padding: var(--ds-spacing-xl) var(--ds-spacing-xl) 180px var(--ds-spacing-xl);
+  }
+}
+
+.chat-input-wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--ds-color-chat-background);
+  box-shadow: 0 -2px 10px var(--ds-color-shadow);
+}
+
+@media (min-width: 769px) {
+  .chat-input-wrapper {
+    left: 360px;
+  }
+}
+
+.guru-session-banner {
+  background: linear-gradient(135deg, var(--ds-color-primary) 0%, color-mix(in srgb, var(--ds-color-primary) 70%, white) 100%);
+  border-bottom: 2px solid color-mix(in srgb, var(--ds-color-primary) 80%, black);
+  animation: slideDown 0.3s ease-out;
+}
+
+.session-text {
+  color: var(--ds-color-text-white);
+  font-weight: var(--ds-font-weight-semibold);
+  font-size: var(--ds-font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pulse-icon {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.guru-toggle-btn {
+  position: fixed !important;
+  bottom: 180px;
+  right: 32px;
+  z-index: 1000;
+  box-shadow: var(--ds-shadow-lg);
+  animation: bounce 2s infinite;
+  transition: all 0.3s ease;
+
+  &:hover {
+    animation: none;
+  }
+}
+
+@media (max-width: 599px) {
+  .guru-toggle-btn {
+    bottom: 140px;
+    right: 16px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .attach-btn:active .attach-icon {
+    transform: rotate(135deg) scale(0.95);
+  }
+
+  .custom-bot-btn:active {
+    transform: scale(0.95);
+  }
+}
+
+.new-messages-fab {
+  position: fixed !important;
+  bottom: 210px;
+  right: 32px;
+  z-index: 5;
+  box-shadow: var(--ds-shadow-lg);
+}
+
+@media (max-width: 599px) {
+  .new-messages-fab {
+    bottom: 190px;
+    right: 16px;
+  }
+}
+
+.custom-bot-btn {
+  position: fixed !important;
+  bottom: 100px;
+  right: 32px;
+  z-index: 1000;
+  box-shadow: var(--ds-shadow-lg);
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: var(--ds-shadow-xl);
+  }
+}
+
+@media (max-width: 599px) {
+  .custom-bot-btn {
+    bottom: 80px;
+    right: 16px;
+  }
+}
+
+.minimized-agents-bar {
+  position: fixed;
+  bottom: 90px;
+  left: 24px;
+  display: flex;
+  gap: var(--ds-spacing-sm);
+  z-index: 999;
+}
+
+@media (min-width: 769px) {
+  .minimized-agents-bar {
+    left: 384px;
+  }
+}
+
+.minimized-agent-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-spacing-sm);
+  padding: 10px 14px;
+  background: var(--ds-color-text-white);
+  border: 1px solid color-mix(in srgb, var(--ds-color-border) 70%, white 30%);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -2px 8px var(--ds-color-shadow);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  max-width: 140px;
+
+  &:hover {
+    box-shadow: 0 -4px 16px color-mix(in srgb, var(--ds-color-shadow) 80%, black 10%);
+    transform: translateY(-2px);
+  }
+}
+
+.tab-emoji {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.tab-name {
+  font-size: var(--ds-font-size-sm);
+  font-weight: var(--ds-font-weight-semibold);
+  color: var(--ds-color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--ds-color-text-primary) 40%, white 60%);
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--ds-color-error);
+  }
+}
+
+@media (max-width: 599px) {
+  .minimized-agents-bar {
+    bottom: 90px;
+    left: 16px;
+  }
+
+  .minimized-agent-tab {
+    max-width: 100px;
+    padding: 8px 10px;
+  }
+
+  .tab-emoji {
+    font-size: 16px;
+  }
+
+  .tab-name {
+    font-size: 12px;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 768px) {
+  .minimized-agents-bar {
+    left: 16px;
+  }
+}
+
+// 🎭 Usando animate.css para animações profissionais
+// As animações agora são gerenciadas pelo animate.css:
+// - bounceIn: efeito de entrada elástico
+// - zoomOut: efeito de saída com zoom
+// Documentação: https://animate.style/

@@ -18,7 +18,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Chat API", lifespan=lifespan)
 
 # CORS configurável
+# CORS configuration – ensure localhost dev ports covered even when Vite switches ports
 allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+
+if "http://localhost:5173" in allowed_origins and "http://localhost:5174" not in allowed_origins:
+    allowed_origins.append("http://localhost:5174")
+
+if "http://127.0.0.1:5173" in allowed_origins and "http://127.0.0.1:5174" not in allowed_origins:
+    allowed_origins.append("http://127.0.0.1:5174")
+
 allow_credentials = "*" not in allowed_origins
 app.add_middleware(
     CORSMiddleware,

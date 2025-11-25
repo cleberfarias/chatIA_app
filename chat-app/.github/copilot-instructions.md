@@ -34,19 +34,43 @@ src/
 ├── design-system/
 │   ├── tokens/          # Variáveis de design (cores, spacing, etc)
 │   ├── components/      # Componentes reutilizáveis (DS*)
+│   │   ├── DSChatInput/
+│   │   ├── DSChatHeader/
+│   │   ├── DSMessageBubble/
+│   │   ├── DSAttachmentMenu/
+│   │   ├── DSVoiceRecorder/
+│   │   ├── DSUploader/
+│   │   ├── DSCommandBar/
+│   │   ├── DSDateSeparator/
+│   │   └── ... (todos com index.ts para barrel export)
 │   ├── composables/     # Lógica reutilizável (use*)
+│   ├── styles/          # Estilos globais (foundations, mixins, utilities)
 │   └── types/          # Tipos TypeScript compartilhados
+├── features/           # Organização por feature/domínio
+│   ├── chat/
+│   │   └── components/  # MessageList, TypingIndicator
+│   ├── contacts/
+│   │   └── components/  # ContactsList
+│   ├── agents/
+│   │   └── components/  # AgentChatPane, CustomBotCreator
+│   └── whatsapp/
+│       └── components/  # WppConnectDialog
 ├── views/              # Páginas/Views da aplicação
-├── components/         # Componentes específicos da aplicação
+├── stores/             # Pinia stores (auth, chat, contacts)
+├── composables/        # Composables da aplicação (useOmni, useUpload)
 └── assets/            # Recursos estáticos
 ```
 
 ### Nomenclatura
 
 **Componentes:**
-- Design System: `DSNomeDoComponente.vue` (ex: `DSChatHeader.vue`)
-- Views: `NomeView.vue` (ex: `ChatView.vue`)
-- Componentes comuns: `NomeDoComponente.vue` (ex: `MessageList.vue`)
+- Design System: `DSNomeDoComponente.vue` em `design-system/components/DSNomeDoComponente/` com barrel export (ex: `DSChatHeader/`)
+- Views: `NomeView.vue` em `views/` (ex: `ChatView.vue`)
+- Feature Components: `NomeDoComponente.vue` em `features/{feature}/components/` (ex: `features/chat/components/MessageList.vue`)
+
+**Imports:**
+- Design System: `import { DSComponente } from '@/design-system/components/DSComponente'` (named import via barrel)
+- Features: `import ComponentName from '@/features/{feature}/components/ComponentName.vue'` (default import)
 
 **Composables:**
 - Sempre começar com `use` (ex: `useChat.ts`, `useScrollToBottom.ts`)

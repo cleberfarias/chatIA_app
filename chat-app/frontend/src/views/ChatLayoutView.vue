@@ -95,9 +95,9 @@ import { useContactsStore } from '@/stores/contacts';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { storeToRefs } from 'pinia';
-import ContactsList from '@/components/ContactsList.vue';
+import ContactsList from '@/features/contacts/components/ContactsList.vue';
 import ChatView from './ChatView.vue';
-import WppConnectDialog from '@/components/WppConnectDialog.vue';
+import WppConnectDialog from '@/features/whatsapp/components/WppConnectDialog.vue';
 
 const router = useRouter();
 const contactsStore = useContactsStore();
@@ -131,11 +131,15 @@ onMounted(async () => {
     authStore.load();
   }
   
+  // Carrega lista de contatos
+  await contactsStore.loadContacts();
+  
   // Pequeno delay para garantir renderização
   await new Promise(resolve => setTimeout(resolve, 100));
   isReady.value = true;
   
   console.log('✅ Layout pronto, usuário:', authStore.user?.name);
+  console.log('📋 Contatos carregados:', contactsStore.contacts.length);
 });
 </script>
 

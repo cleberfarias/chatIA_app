@@ -1425,6 +1425,65 @@ Este projeto demonstra:
 
 ---
 
+## 🧪 Testes de Funcionalidades
+
+### Teste de Conversas Entre Usuários
+
+#### Pré-requisitos
+1. Token JWT válido (faça logout/login se necessário)
+2. Dois navegadores ou abas em modo anônimo
+3. Pelo menos 2 usuários cadastrados no banco
+
+#### Fluxo de Teste
+
+**Aba 1 (Usuário A):**
+1. Acesse `http://localhost:5173`
+2. Login: `usuario1@example.com`
+3. Abra DevTools (F12) → Console
+4. Aguarde: "✅ Socket conectado com sucesso"
+
+**Aba 2 (Usuário B):**
+1. Nova aba anônima: `http://localhost:5173`
+2. Login: `usuario2@example.com`
+3. Abra DevTools (F12) → Console
+4. Aguarde: "✅ Socket conectado com sucesso"
+
+**Envio de Mensagem:**
+- Na Aba 1, selecione Usuário B na lista de contatos
+- Digite mensagem e envie
+- Console mostra: "📤 Mensagem enviada (optimistic)"
+- Na Aba 2, mensagem aparece instantaneamente
+- Badge de notificação atualiza na sidebar
+
+**Teste Bidirecional:**
+- Repita o processo na Aba 2 enviando para Usuário A
+- Verifique atualização em tempo real
+- Teste status de mensagens (sent/delivered/read)
+
+**Teste de Upload:**
+1. Clique no ícone de anexo (📎)
+2. Selecione tipo de arquivo (documento/imagem/vídeo)
+3. Escolha arquivo
+4. Observe barra de progresso
+5. Mensagem com anexo aparece no chat
+6. Clique para fazer download
+
+---
+
+## 📁 Documentação Adicional
+
+Para informações detalhadas sobre recursos específicos, consulte:
+
+- **Autenticação JWT:** [`docs/AUTH_IMPLEMENTATION.md`](docs/AUTH_IMPLEMENTATION.md)
+- **Sistema de Bots IA:** [`docs/BOT_AI_SETUP.md`](docs/BOT_AI_SETUP.md)
+- **Upload de Arquivos:** [`docs/UPLOAD_SYSTEM.md`](docs/UPLOAD_SYSTEM.md)
+- **Integração WhatsApp:** [`docs/WHATSAPP_SETUP.md`](docs/WHATSAPP_SETUP.md)
+- **Configuração MinIO CORS:** [`docs/MINIO_CORS_SETUP.md`](docs/MINIO_CORS_SETUP.md)
+- **Design System:** [`frontend/src/design-system/README.md`](frontend/src/design-system/README.md)
+- **Padrões de Código:** [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+
+---
+
 **Criado em:** Novembro de 2025  
 **Aulas:** TECH-01 a TECH-05  
 **Stack:** Vue 3 + FastAPI + MongoDB + MinIO S3 + Socket.IO + Docker

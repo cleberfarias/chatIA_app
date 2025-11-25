@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "animate.css": "^4.1.1",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.0",
     "pinia": "^3.0.3",

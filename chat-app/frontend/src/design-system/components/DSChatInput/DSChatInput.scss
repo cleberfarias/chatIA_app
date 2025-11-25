@@ -1,0 +1,47 @@
+.ds-chat-input {
+  width: 100%;
+  background: var(--ds-color-input-background);
+  border-top: 1px solid var(--ds-color-border);
+}
+
+.ds-chat-input__form {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm);
+}
+
+.ds-chat-input__field {
+  flex: 1 1 auto;
+}
+
+.ds-chat-input__send-btn {
+  position: relative;
+}
+
+.ds-chat-input__progress {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.ds-chat-input__attach-btn {
+  transition: transform 0.2s ease;
+}
+
+.ds-chat-input__attach-icon {
+  transform: rotate(135deg);
+  transition: transform 0.2s ease;
+}
+
+.ds-chat-input__attach-btn:hover .ds-chat-input__attach-icon {
+  transform: rotate(135deg) scale(1.1);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .ds-chat-input__attach-btn:active .ds-chat-input__attach-icon {
+    transform: rotate(135deg) scale(0.95);
+  }
+}

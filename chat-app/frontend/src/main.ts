@@ -4,12 +4,21 @@ import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import { useAuthStore } from './stores/auth'
 
+// Design System
+import './design-system/styles/foundations.scss'
+import './design-system/styles/utilities.scss'
+
+// Animate.css
+import 'animate.css'
+
 // Vuetify
 import 'vuetify/styles'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import '@mdi/font/css/materialdesignicons.css'
+import './design-system/styles/foundations.scss'
+import './design-system/styles/utilities.scss'
 
 // Views
 import ChatLayoutView from './views/ChatLayoutView.vue';

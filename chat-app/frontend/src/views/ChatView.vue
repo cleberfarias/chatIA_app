@@ -1,9 +1,9 @@
 <template>
-  <div class="chat-container" :style="{ background: colors.chatBackground }">
+  <div class="chat-container">
     <!-- ÁREA DE MENSAGENS -->
     <div 
       ref="containerRef" 
-      class="messages-wrapper"
+      class="messages-wrapper u-scrollable-y"
       @scroll="handleScroll"
     >
       <!-- 🆕 BOTÃO "CARREGAR MAIS" (Topo) -->
@@ -68,25 +68,32 @@
       </div>
       
       <!-- 🧠 CHIPS DE COMANDOS DO GURU -->
-      <!-- 🧠 CHIPS DE COMANDOS DO GURU -->
-      <CommandBar v-model="showGuruCommands" @command="insertCommand" />
+      <Transition
+        enter-active-class="animate__animated animate__bounceIn animate__faster"
+        leave-active-class="animate__animated animate__zoomOut animate__faster"
+      >
+        <DSCommandBar 
+          v-if="showGuruCommands" 
+          v-model="showGuruCommands" 
+          @command="insertCommand" 
+        />
+      </Transition>
 
-      <!-- 🔘 Botão para mostrar/ocultar comandos -->
+      <!-- 🔘 Botão Guru flutuante -->
       <v-btn
-        v-if="!showGuruCommands"
         icon="mdi-robot-happy"
-        size="x-small"
+        size="small"
         color="teal-darken-1"
         variant="flat"
         class="guru-toggle-btn"
-        @click="showGuruCommands = true"
-        title="Mostrar comandos do Guru"
+        @click="showGuruCommands = !showGuruCommands"
+        :title="showGuruCommands ? 'Ocultar comandos do Guru' : 'Mostrar comandos do Guru'"
       />
       
       <!-- 🤖 Botão para criar bot personalizado -->
       <v-btn
         icon="mdi-plus-circle"
-        size="x-small"
+        size="small"
         color="purple-darken-2"
         variant="flat"
         class="custom-bot-btn"
@@ -105,7 +112,7 @@
       >
         <template #attach-btn>
           <!-- Menu de Anexos estilo WhatsApp -->
-          <AttachmentMenu
+          <DSAttachmentMenu
             v-model="showAttachmentMenu"
             @file-selected="handleFilesSelected"
           >
@@ -122,13 +129,13 @@
                 <v-icon class="attach-icon">mdi-paperclip</v-icon>
               </v-btn>
             </template>
-          </AttachmentMenu>
+          </DSAttachmentMenu>
         </template>
       </DSChatInput>
     </div>
 
     <!-- GRAVADOR DE VOZ -->
-    <VoiceRecorder
+    <DSVoiceRecorder
       v-model="showVoiceRecorder"
       @audio-recorded="handleAudioRecorded"
     />
@@ -207,13 +214,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import MessageList from '../components/MessageList.vue';
-import DSChatInput from '../design-system/components/DSChatInput.vue';
-import AttachmentMenu from '../components/AttachmentMenu.vue';
-import VoiceRecorder from '../components/VoiceRecorder.vue';
-import CustomBotCreator from '../components/CustomBotCreator.vue';
-import WppConnectDialog from '../components/WppConnectDialog.vue';
-import AgentChatPane from '../components/AgentChatPane.vue';
+import MessageList from '../features/chat/components/MessageList.vue';
+import DSChatInput from '../design-system/components/DSChatInput';
+import { DSAttachmentMenu } from '../design-system/components/DSAttachmentMenu';
+import { DSVoiceRecorder } from '../design-system/components/DSVoiceRecorder';
+import CustomBotCreator from '../features/agents/components/CustomBotCreator.vue';
+import WppConnectDialog from '../features/whatsapp/components/WppConnectDialog.vue';
+import AgentChatPane from '../features/agents/components/AgentChatPane.vue';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { useContactsStore } from '../stores/contacts';
@@ -221,7 +228,7 @@ import { useScrollToBottom } from '../design-system/composables/useScrollToBotto
 import { colors, spacing } from '../design-system/tokens/index.ts';
 import { uploadAndSend } from '../composables/useUpload';
 import type { Contact } from '../stores/contacts';
-import CommandBar from '../components/CommandBar.vue';
+import { DSCommandBar } from '../design-system/components/DSCommandBar';
 
 // 🆕 Props
 interface Props {
@@ -700,319 +707,4 @@ async function handleAudioRecorded(audioBlob: Blob) {
 }
 </script>
 
-<style scoped>
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  position: relative;
-}
-
-.messages-wrapper {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  position: relative;
-  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.9), rgba(235,241,247,0.85)),
-              radial-gradient(circle at 80% 0%, rgba(255,255,255,0.8), rgba(225,235,245,0.8));
-  background-color: #e8f0f7;
-}
-
-.messages-area {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 16px 16px 140px 16px; /* Padding bottom para espaço do input */
-}
-
-/* 📱 Tablet e Desktop - Padding maior */
-@media (min-width: 600px) {
-  .messages-area {
-    padding: 20px 20px 160px 20px;
-  }
-}
-
-@media (min-width: 960px) {
-  .messages-area {
-    padding: 24px 24px 180px 24px;
-  }
-}
-
-.chat-input-wrapper {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  flex-shrink: 0;
-  z-index: 10;
-  background: white;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-}
-
-/* 🖥️ Desktop - Ajuste para considerar sidebar */
-@media (min-width: 769px) {
-  .chat-input-wrapper {
-    left: 360px; /* Largura da sidebar */
-  }
-}
-
-/* 🧠 Banner de sessão ativa com Guru */
-.guru-session-banner {
-  background: linear-gradient(135deg, #00695c 0%, #00897b 100%);
-  border-bottom: 2px solid #004d40;
-  animation: slideDown 0.3s ease-out;
-}
-
-.session-text {
-  color: white;
-  font-weight: 600;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.pulse-icon {
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.6;
-    transform: scale(1.2);
-  }
-}
-
-/* 🔘 Botão toggle do Guru */
-.guru-toggle-btn {
-  position: fixed !important;
-  bottom: 90px;
-  right: 24px;
-  z-index: 11;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  animation: bounce 2s infinite;
-  transition: all 0.2s ease;
-}
-
-@keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-.guru-toggle-btn:hover {
-  animation: none;
-}
-
-/* 📱 Mobile - Scrollbar horizontal sutil */
-.guru-commands-bar::-webkit-scrollbar {
-  height: 4px;
-}
-
-.guru-commands-bar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.guru-commands-bar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 2px;
-}
-
-/* 📱 Mobile - Ajustes responsivos */
-@media (max-width: 599px) {
-  .guru-toggle-btn {
-    bottom: 90px;
-    right: 16px;
-  }
-}
-
-.messages-wrapper::-webkit-scrollbar {
-  width: 8px;
-}
-
-/* 📱 Mobile - Scrollbar mais fina */
-@media (max-width: 599px) {
-  .messages-wrapper::-webkit-scrollbar {
-    width: 4px;
-  }
-}
-
-.messages-wrapper::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.messages-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-}
-
-.messages-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-/* 🆕 Botão flutuante "Novas Mensagens" */
-.new-messages-fab {
-  position: fixed !important;
-  bottom: 210px;
-  right: 24px;
-  z-index: 5;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* 📱 Mobile - Botão menor e mais à esquerda */
-@media (max-width: 599px) {
-  .new-messages-fab {
-    bottom: 190px;
-    right: 16px;
-  }
-}
-
-/* 📎 Estilo WhatsApp - Clipe rotacionado 135° */
-.attach-btn {
-  transition: transform 0.2s ease;
-}
-
-.attach-icon {
-  transform: rotate(135deg);
-  transition: transform 0.2s ease;
-}
-
-.attach-btn:hover .attach-icon {
-  transform: rotate(135deg) scale(1.1);
-}
-
-/* 📱 Mobile - Efeito touch (sem hover) */
-@media (hover: none) and (pointer: coarse) {
-  .attach-btn:active .attach-icon {
-    transform: rotate(135deg) scale(0.95);
-  }
-}
-
-/* 🤖 Botão de Criar Bot Personalizado */
-.custom-bot-btn {
-  position: fixed !important;
-  bottom: 150px;
-  right: 24px;
-  z-index: 100;
-  box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);
-  transition: all 0.2s ease;
-}
-
-.custom-bot-btn:hover {
-  transform: scale(1.1);
-  box-shadow: 0 4px 16px rgba(156, 39, 176, 0.4);
-}
-
-/* 📱 Mobile - Ajustes responsivos */
-@media (max-width: 599px) {
-  .custom-bot-btn {
-    bottom: 130px;
-    right: 16px;
-  }
-}
-
-/* 📱 Mobile - Efeito touch */
-@media (hover: none) and (pointer: coarse) {
-  .custom-bot-btn:active {
-    transform: scale(0.95);
-  }
-}
-
-/* 🔥 Barra de Agentes Minimizados */
-.minimized-agents-bar {
-  position: fixed;
-  bottom: 90px;
-  left: 24px;
-  display: flex;
-  gap: 8px;
-  z-index: 999;
-}
-
-/* 🖥️ Desktop - Posiciona após sidebar */
-@media (min-width: 769px) {
-  .minimized-agents-bar {
-    left: 384px; /* 360px sidebar + 24px margem */
-  }
-}
-
-.minimized-agent-tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
-  cursor: pointer;
-  transition: all 0.2s;
-  max-width: 140px;
-}
-
-.minimized-agent-tab:hover {
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
-}
-
-.tab-emoji {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.tab-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #333;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tab-close {
-  background: none;
-  border: none;
-  padding: 2px;
-  cursor: pointer;
-  color: #999;
-  transition: color 0.2s;
-  flex-shrink: 0;
-}
-
-.tab-close:hover {
-  color: #f44336;
-}
-
-@media (max-width: 599px) {
-  .minimized-agents-bar {
-    bottom: 90px;
-    left: 16px;
-  }
-  
-  .minimized-agent-tab {
-    max-width: 100px;
-    padding: 8px 10px;
-  }
-  
-  .tab-emoji {
-    font-size: 16px;
-  }
-  
-  .tab-name {
-    font-size: 12px;
-  }
-}
-
-@media (min-width: 600px) and (max-width: 768px) {
-  .minimized-agents-bar {
-    left: 16px;
-  }
-}
-</style>
+<style scoped lang="scss" src="./ChatView.scss"></style>
