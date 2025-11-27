@@ -350,6 +350,42 @@ FORMATAÇÃO:
 )
 
 
+# Agente: SDR (Sales Development Representative)
+AGENT_SDR = Agent(
+    name="SDR",
+    emoji="📅",
+    system_prompt="""Você é um SDR (Sales Development Representative) especializado em agendamentos.
+
+**IMPORTANTE:** Você trabalha com um sistema AUTOMÁTICO de detecção de intenções e entidades.
+O sistema JÁ DETECTA automaticamente: emails, telefones, nomes, datas e intenção de agendamento.
+
+**Seu papel:**
+- Confirmar as informações detectadas automaticamente
+- Fazer perguntas APENAS sobre o que ainda não foi detectado
+- Ser breve e objetivo (máximo 2-3 linhas)
+- NÃO pedir informações que já foram fornecidas na conversa
+
+**Quando o sistema detectar email + intenção de agendamento:**
+- Confirme brevemente: "Perfeito! Detectei seu email [email]. Vou abrir o calendário para você escolher o melhor horário."
+- NÃO pergunte novamente sobre empresa, cargo ou necessidade
+- O calendário aparecerá automaticamente
+
+**Quando detectar apenas intenção SEM email:**
+- Peça APENAS o email: "Para agendar, preciso apenas do seu email. Pode me informar?"
+
+**Tom:** Direto, eficiente e amigável. Máximo 2-3 linhas por resposta.""",
+    specialties=["Qualificação de Leads", "Agendamento", "Vendas B2B", "Google Calendar", "Follow-up"],
+    commands={
+        "/agendar": "Inicie o processo de agendamento de reunião",
+        "/disponibilidade": "Verifique horários disponíveis na agenda",
+        "/confirmar": "Confirme um agendamento já combinado",
+        "/remarcar": "Remarque uma reunião existente",
+        "/cancelar": "Cancele um agendamento",
+        "/qualificar": "Qualifique o lead usando método BANT"
+    }
+)
+
+
 # =====================================================
 # REGISTRO DE AGENTES
 # =====================================================
@@ -360,6 +396,7 @@ AGENTS_REGISTRY: dict[str, Agent] = {
     "vendedor": AGENT_VENDEDOR,
     "medico": AGENT_MEDICO,
     "psicologo": AGENT_PSICOLOGO,
+    "sdr": AGENT_SDR,
 }
 
 
@@ -627,3 +664,126 @@ async def handle_agent_command(
         return await agent.ask(prompt, user_id, user_name)
     
     return f"❓ Comando desconhecido. Use **@{agent.name.lower()} /ajuda** para ver comandos disponíveis."
+
+
+# =====================================================
+# FUNÇÕES AUXILIARES PARA SDR - AGENDAMENTO REAL
+# =====================================================
+
+async def sdr_try_schedule_meeting(
+    conversation_text: str,
+    user_id: str,
+    user_name: str
+) -> Optional[dict]:
+    """
+    Tenta extrair informações de agendamento da conversa e criar evento no Google Calendar.
+    
+    Args:
+        conversation_text: Texto da conversa completa
+        user_id: ID do usuário
+        user_name: Nome do usuário
+        
+    Returns:
+        Dict com informações do evento criado ou None se não conseguir
+    """
+    from bots.entities import extract_entities
+    from bots.nlu import detect_intent
+    from integrations.google_calendar import GoogleCalendarService
+    from datetime import datetime, timedelta
+    import re
+    
+    # Detecta intenção de agendamento (agora é async)
+    intent = await detect_intent(conversation_text, "customer")
+    if intent.name not in ["scheduling", "purchase"]:
+        return None
+    
+    # Extrai entidades
+    entities = extract_entities(conversation_text, {})
+    
+    # Verifica se tem as informações mínimas
+    email_entity = entities.get("email")
+    if not email_entity or not email_entity.valid:
+        return None
+    
+    # Extrai informações
+    customer_email = email_entity.normalized
+    customer_name = user_name
+    customer_phone = None
+    
+    if "phone" in entities and entities["phone"].valid:
+        customer_phone = entities["phone"].normalized
+    
+    # Extrai data e hora
+    date_entity = entities.get("date")
+    time_entity = entities.get("time")
+    
+    if not date_entity or not time_entity:
+        return None
+    
+    # Monta datetime
+    try:
+        date_str = date_entity.normalized  # formato: YYYY-MM-DD
+        time_str = time_entity.normalized  # formato: HH:MM
+        
+        start_datetime = datetime.fromisoformat(f"{date_str}T{time_str}:00")
+        end_datetime = start_datetime + timedelta(hours=1)  # 1 hora de duração
+        
+    except Exception as e:
+        print(f"❌ Erro ao parsear data/hora: {e}")
+        return None
+    
+    # Cria evento no Google Calendar
+    try:
+        calendar_service = GoogleCalendarService()
+        
+        # Autentica
+        if not calendar_service.authenticate():
+            print("❌ Falha na autenticação do Google Calendar")
+            return None
+        
+        # Cria evento
+        event = calendar_service.create_meeting_event(
+            summary=f"Demonstração do Produto - {customer_name}",
+            description=f"Reunião de demonstração agendada pelo SDR.\n\nCliente: {customer_name}\nEmail: {customer_email}\nTelefone: {customer_phone or 'Não informado'}",
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            attendee_emails=[customer_email],
+            location="Google Meet",
+            send_notifications=True
+        )
+        
+        if event:
+            # Salva no banco de dados
+            from database import calendar_events_collection
+            
+            await calendar_events_collection.insert_one({
+                "google_event_id": event["id"],
+                "customer_id": user_id,
+                "customer_name": customer_name,
+                "customer_email": customer_email,
+                "customer_phone": customer_phone,
+                "agent_id": "sdr",
+                "agent_name": "SDR",
+                "title": f"Demonstração do Produto - {customer_name}",
+                "description": f"Reunião agendada via chat",
+                "start_time": start_datetime,
+                "end_time": end_datetime,
+                "timezone": "America/Sao_Paulo",
+                "location": "Google Meet",
+                "attendees": [customer_email],
+                "meet_link": event.get("hangoutLink"),
+                "calendar_link": event.get("htmlLink"),
+                "status": "scheduled",
+                "reminder_sent": False,
+                "created_at": datetime.utcnow(),
+                "notes": f"Agendado pelo SDR via chat"
+            })
+            
+            print(f"✅ Evento criado: {event['id']}")
+            return event
+        
+    except Exception as e:
+        print(f"❌ Erro ao criar evento no Google Calendar: {e}")
+        return None
+    
+    return None

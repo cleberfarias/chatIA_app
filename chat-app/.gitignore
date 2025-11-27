@@ -88,3 +88,9 @@ secrets.*
 .secrets.baseline
 .env*
 !.env.example
+
+# Google Calendar credentials
+backend/credentials.json
+backend/token.json
+credentials.json
+token.json

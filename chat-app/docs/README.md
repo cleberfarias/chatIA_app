@@ -9,6 +9,7 @@ Esta pasta contém documentações específicas sobre recursos e configurações
 
 ### Inteligência Artificial
 - **[BOT_AI_SETUP.md](BOT_AI_SETUP.md)** - Configuração de agentes IA (Guru, TechMaster, etc.), OpenAI API, prompts customizados
+- **[HYBRID_AI_SYSTEM.md](HYBRID_AI_SYSTEM.md)** - Sistema híbrido com NLU, extração de entidades, handover bot→humano, agente SDR e Google Calendar
 
 ### Storage e Upload
 - **[UPLOAD_SYSTEM.md](UPLOAD_SYSTEM.md)** - Sistema de upload com MinIO/S3, presigned URLs, validação de arquivos

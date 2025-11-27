@@ -242,7 +242,64 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
                         "timestamp": int(user_msg_doc["createdAt"].timestamp() * 1000),
                         "contactId": contact_id
                     }, room=sid)
-                    if clean_text.startswith("/"):
+                    
+                    # 📅 SDR: Detecta intenção ANTES de gerar resposta
+                    should_show_calendar = False
+                    calendar_data = None
+                    
+                    if agent_name == "sdr" and clean_text:
+                        from bots.nlu import detect_intent
+                        from bots.entities import extract_entities
+                        
+                        # Monta histórico da conversa (inclui TODAS as mensagens: usuário + agente)
+                        history_docs = await agent_messages_collection.find({
+                            "userId": user_id,
+                            "agentKey": "sdr"
+                        }).sort("createdAt", -1).limit(20).to_list(20)
+                        
+                        # Junta todo o texto da conversa (usuário + bot)
+                        conversation_text = " ".join([doc["text"] for doc in reversed(history_docs)])
+                        
+                        # Também adiciona a mensagem atual
+                        conversation_text += " " + clean_text
+                        
+                        print(f"🔍 SDR - Analisando conversa: {conversation_text[:200]}...")
+                        
+                        # Detecta intenção de agendamento
+                        intent_result = await detect_intent(conversation_text, "customer")
+                        entities = extract_entities(conversation_text)
+                        
+                        print(f"🔍 SDR - Intent: {intent_result.name} | Confidence: {intent_result.confidence}")
+                        
+                        # Log detalhado das entidades
+                        has_email = False
+                        has_phone = False
+                        customer_email = None
+                        customer_phone = None
+                        
+                        if entities:
+                            for entity_key, entity in entities.items():
+                                print(f"🔍 SDR - Entity {entity_key}: value='{entity.value}', normalized='{entity.normalized}'")
+                                if entity_key == "email" and entity.valid:
+                                    has_email = True
+                                    customer_email = entity.normalized
+                                elif entity_key == "phone" and entity.valid:
+                                    has_phone = True
+                                    customer_phone = entity.normalized
+                        
+                        # Se há intenção de agendamento E já tem email
+                        if intent_result.name in ["scheduling", "purchase"] and has_email:
+                            should_show_calendar = True
+                            calendar_data = {
+                                "email": customer_email,
+                                "phone": customer_phone
+                            }
+                            print(f"📅 CALENDÁRIO SERÁ MOSTRADO para {customer_email}")
+                    
+                    # Gera resposta do agente (ou customizada se calendário)
+                    if should_show_calendar:
+                        response = f"✅ Perfeito! Detectei seu email {calendar_data['email']}. Vou abrir o calendário para você escolher o melhor horário."
+                    elif clean_text and clean_text.startswith("/"):
                         response = await handle_agent_command(agent, clean_text, user_id, author)
                     else:
                         if clean_text:
@@ -253,6 +310,8 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
                             for specialty in agent.specialties:
                                 response += f"• {specialty}\n"
                             response += f"\n💡 _Faça sua pergunta ou use @{agent_name} /ajuda para ver comandos_"
+                    
+                    # Salva e envia resposta
                     agent_msg_doc = {
                         "_id": ObjectId(),
                         "agentKey": agent_name,
@@ -271,6 +330,52 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
                         "timestamp": int(agent_msg_doc["createdAt"].timestamp() * 1000),
                         "contactId": contact_id
                     }, room=sid)
+                    
+                    # 📅 Envia evento do calendário DEPOIS da resposta
+                    if should_show_calendar:
+                        print(f"📅 EMITINDO agent:show-slot-picker para {calendar_data['email']}")
+                        await sio.emit("agent:show-slot-picker", {
+                            "agentKey": "sdr",
+                            "customerEmail": calendar_data['email'],
+                            "customerPhone": calendar_data['phone']
+                        }, room=sid)
+                        
+                        # Se já tem data/hora escolhidos, tenta agendar
+                        if entities.get("email") and entities.get("date") and entities.get("time"):
+                            from bots.agents import sdr_try_schedule_meeting
+                            event = await sdr_try_schedule_meeting(conversation_text, user_id, author)
+                            
+                            if event:
+                                # Envia confirmação com links
+                                confirmation_text = f"""
+✅ **Reunião agendada com sucesso!**
+
+📅 **Link do Calendário:** {event.get('htmlLink', 'N/A')}
+📹 **Link do Google Meet:** {event.get('hangoutLink', 'N/A')}
+📧 **Convite enviado para:** {user_email}
+
+Você receberá um email de confirmação com todos os detalhes da reunião.
+"""
+                                
+                                confirmation_doc = {
+                                    "_id": ObjectId(),
+                                    "agentKey": "sdr",
+                                    "author": agent.get_display_name(),
+                                    "text": confirmation_text,
+                                    "userId": user_id,
+                                    "contactId": contact_id,
+                                    "createdAt": datetime.now(timezone.utc)
+                                }
+                                await agent_messages_collection.insert_one(confirmation_doc)
+                                await sio.emit("agent:message", {
+                                    "id": str(confirmation_doc["_id"]),
+                                    "agentKey": "sdr",
+                                    "author": agent.get_display_name(),
+                                    "text": confirmation_text,
+                                    "timestamp": int(confirmation_doc["createdAt"].timestamp() * 1000),
+                                    "contactId": contact_id
+                                }, room=sid)
+                    
                     return
 
             text_lower = text.lower().strip()

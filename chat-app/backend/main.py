@@ -9,6 +9,12 @@ from bots.automations import start_scheduler, load_and_schedule_all
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Cria índices do MongoDB
+    from database import create_indexes
+    await create_indexes()
+    print("✅ Índices do MongoDB criados")
+    
+    # Inicia scheduler e automações
     start_scheduler()
     await load_and_schedule_all(sio.emit)
     print("✅ Scheduler iniciado e automações carregadas")
@@ -72,6 +78,15 @@ try:
     print("✅ Router omnichannel carregado")
 except ImportError as e:
     print(f"⚠️  Router omnichannel não encontrado: {e}")
+
+from routers.nlu import router as nlu_router
+app.include_router(nlu_router)
+
+from routers.handovers import router as handovers_router
+app.include_router(handovers_router)
+
+from routers.calendar import router as calendar_router
+app.include_router(calendar_router)
 
 
 @app.get("/")
