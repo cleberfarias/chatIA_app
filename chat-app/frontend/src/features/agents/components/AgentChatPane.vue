@@ -33,6 +33,18 @@
         <div class="agent-msg-text">{{ m.text }}</div>
         <div class="agent-msg-time">Agora</div>
       </div>
+      
+      <!-- 📅 Slot Picker (quando SDR detecta agendamento) -->
+      <div v-if="showSlotPicker" class="agent-message">
+        <SlotPicker
+          :agent-key="agentKey"
+          :user-id="chatStore.currentUser"
+          :customer-email="slotPickerData.customerEmail"
+          :customer-phone="slotPickerData.customerPhone"
+          @slot-selected="handleSlotSelected"
+          @close="showSlotPicker = false"
+        />
+      </div>
     </div>
 
     <!-- Input -->
@@ -55,6 +67,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
+import SlotPicker from './SlotPicker';
 
 // 🔧 URL base da API
 const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -75,6 +88,13 @@ const chatStore = useChatStore();
 const input = ref('');
 const messages = ref<Array<{ author: string; text: string }>>([]);
 const messagesEl = ref<HTMLElement | null>(null);
+
+// 📅 Slot Picker state
+const showSlotPicker = ref(false);
+const slotPickerData = ref<{
+  customerEmail?: string;
+  customerPhone?: string;
+}>({});
 
 function close() {
   console.log('🔴 AgentChatPane: close() chamado para', props.agentKey);
@@ -212,6 +232,19 @@ onMounted(async () => {
   if (chatStore.socket) {
     console.log(`🎧 [AgentPane ${props.agentKey}] Registrando listener 'agent:message'`);
     chatStore.socket.on('agent:message', onNewMessage);
+    
+    // 📅 Listener para mostrar Slot Picker
+    chatStore.socket.on('agent:show-slot-picker', (data: any) => {
+      if (data.agentKey === props.agentKey) {
+        console.log('📅 Mostrando SlotPicker para', props.agentKey, data);
+        slotPickerData.value = {
+          customerEmail: data.customerEmail,
+          customerPhone: data.customerPhone
+        };
+        showSlotPicker.value = true;
+        scrollToBottom();
+      }
+    });
   }
 });
 
@@ -219,8 +252,38 @@ onBeforeUnmount(() => {
   if (chatStore.socket) {
     console.log(`👋 [AgentPane ${props.agentKey}] Removendo listener 'agent:message'`);
     chatStore.socket.off('agent:message', onNewMessage);
+    chatStore.socket.off('agent:show-slot-picker');
   }
 });
+
+// 📅 Quando cliente seleciona um slot
+async function handleSlotSelected(data: { date: string; time: string; customerEmail: string }) {
+  console.log('📅 Slot selecionado:', data);
+  
+  // Fecha o picker
+  showSlotPicker.value = false;
+  
+  // Envia mensagem informando a escolha para o SDR processar
+  if (chatStore.socket) {
+    const message = `Escolhi o dia ${data.date} às ${data.time}. Meu email é ${data.customerEmail}`;
+    
+    chatStore.socket.emit('chat:send', {
+      author: chatStore.currentUser,
+      text: `@${props.agentKey} ${message}`,
+      type: 'text',
+      tempId: `slot_${Date.now()}`,
+      contactId: props.contactId
+    });
+    
+    // Adiciona mensagem localmente
+    messages.value.push({
+      author: chatStore.currentUser,
+      text: message
+    });
+    
+    scrollToBottom();
+  }
+}
 </script>
 
 <style scoped>

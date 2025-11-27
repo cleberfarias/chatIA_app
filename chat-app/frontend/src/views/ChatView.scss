@@ -18,18 +18,18 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  padding: var(--ds-spacing-md) var(--ds-spacing-md) 140px var(--ds-spacing-md);
+  padding: var(--ds-spacing-md) var(--ds-spacing-md) 80px var(--ds-spacing-md);
 }
 
 @media (min-width: 600px) {
   .messages-area {
-    padding: var(--ds-spacing-lg) var(--ds-spacing-lg) 160px var(--ds-spacing-lg);
+    padding: var(--ds-spacing-lg) var(--ds-spacing-lg) 90px var(--ds-spacing-lg);
   }
 }
 
 @media (min-width: 960px) {
   .messages-area {
-    padding: var(--ds-spacing-xl) var(--ds-spacing-xl) 180px var(--ds-spacing-xl);
+    padding: var(--ds-spacing-xl) var(--ds-spacing-xl) 100px var(--ds-spacing-xl);
   }
 }
 

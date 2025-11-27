@@ -252,7 +252,7 @@ const showAttachmentMenu = ref(false);
 const showVoiceRecorder = ref(false);
 const showBotCreator = ref(false);
 const showWppConnectDialog = ref(false);
-const showGuruCommands = ref(true); // 🧠 Mostra chips do Guru por padrão
+const showGuruCommands = ref(false); // 🧠 Mostra chips do Guru apenas quando clicar no botão
 const guruSessionActive = ref(false); // 🧠 Rastreia se está em sessão com Guru
 const apiBaseUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 const uploadingFile = ref(false);
@@ -474,33 +474,7 @@ function handleTyping(isTyping: boolean) {
 
 function handleSendMessage(messageText: string) {
   if (!messageText.trim()) return;
-  
-  // ⚠️ INTERCEPTA menções a agentes (ex: @advogado) e abre painel em vez de enviar
-  if (messageText.startsWith('@')) {
-    const agentKey = messageText.replace('@', '').trim().split(' ')[0];
-    console.log('🔍 Detectado comando:', messageText, '→ agentKey:', agentKey);
-    
-    if (!agentKey) {
-      console.warn('⚠️ agentKey vazio');
-      return;
-    }
-    
-    // Mapeia agentes conhecidos
-    const agentMap: Record<string, { title: string; emoji: string }> = {
-      'advogado': { title: 'Dr. Advocatus', emoji: '⚖️' },
-      'vendedor': { title: 'Vendedor Pro', emoji: '💼' },
-      'medico': { title: 'Dr. Saúde', emoji: '🩺' },
-      'psicologo': { title: 'Psicólogo', emoji: '🧘' },
-      'guru': { title: 'Guru IA', emoji: '🧠' }
-    };
-    
-    const agent = agentMap[agentKey.toLowerCase()] || { title: agentKey, emoji: '🤖' };
-    console.log('✅ Abrindo painel:', agentKey, agent);
-    openAgentPanel(agentKey, agent.title, agent.emoji);
-    text.value = ''; // Limpa o input
-    return; // ⚠️ NÃO envia ao chat principal
-  }
-  
+
   // Define o nome do usuário antes de enviar
   if (author.value) {
     chatStore.currentUser = author.value;
@@ -529,6 +503,7 @@ function insertCommand(command: string) {
       'vendedor': { title: 'Vendedor Pro', emoji: '💼' },
       'medico': { title: 'Dr. Saúde', emoji: '🩺' },
       'psicologo': { title: 'Psicólogo', emoji: '🧘' },
+      'sdr': { title: 'SDR', emoji: '📅' },
       'guru': { title: 'Guru IA', emoji: '🧠' }
     };
     

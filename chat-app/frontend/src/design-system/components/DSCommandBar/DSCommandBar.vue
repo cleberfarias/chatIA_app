@@ -99,6 +99,16 @@
         </v-chip>
         <v-chip
           size="small"
+          color="orange-darken-1"
+          variant="flat"
+          prepend-icon="mdi-calendar-clock"
+          class="mr-2 mb-2"
+          @click="onCommand('@sdr ')"
+        >
+          @sdr 📅
+        </v-chip>
+        <v-chip
+          size="small"
           color="amber-darken-2"
           variant="flat"
           prepend-icon="mdi-robot"
