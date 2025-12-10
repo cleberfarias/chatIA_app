@@ -16,6 +16,15 @@
         <v-btn icon size="x-small" variant="text" @click="minimize" title="Minimizar">
           <v-icon size="small">mdi-minus</v-icon>
         </v-btn>
+        <v-btn icon size="x-small" variant="text" @click="onRequestSummary" title="Resumo">
+          <v-icon size="small">mdi-file-document-outline</v-icon>
+        </v-btn>
+          <v-btn icon size="x-small" variant="text" :title="autoCreate ? 'Auto-agendar ON' : 'Auto-agendar OFF'" @click="toggleAutoCreate" >
+            <v-icon size="small">mdi-calendar-clock</v-icon>
+          </v-btn>
+        <v-btn icon size="x-small" variant="text" @click="toggleAutoSend" :title="autoSend ? 'Auto-send ON' : 'Auto-send OFF'">
+          <v-icon size="small">mdi-send-check</v-icon>
+        </v-btn>
         <v-btn icon size="x-small" variant="text" @click="close" title="Fechar">
           <v-icon size="small">mdi-close</v-icon>
         </v-btn>
@@ -24,6 +33,9 @@
 
     <!-- Mensagens -->
     <div class="agent-messages" ref="messagesEl">
+      <div v-if="errorMessage" class="agent-error">
+        <strong>Erro:</strong> {{ errorMessage }}
+      </div>
       <div v-if="messages.length === 0" class="empty-state">
         <p>{{ emoji }} Olá, eu sou o {{ title }}.</p>
         <p class="text-sm">Digite sua consulta interna.</p>
@@ -48,6 +60,11 @@
     </div>
 
     <!-- Input -->
+    <div v-if="suggestions.length > 0" class="agent-suggestions">
+      <div class="suggestion-chip" v-for="(s, idx) in suggestions" :key="idx" @click="applySuggestion(s)">
+        {{ s }}
+      </div>
+    </div>
     <div class="agent-input">
       <input
         v-model="input"
@@ -61,10 +78,16 @@
       </button>
     </div>
   </div>
+  <div class="agent-intent" v-if="intent || entitiesState.length > 0">
+    <div class="agent-intent-text" v-if="intent">🔎 Intent: {{ intent }}</div>
+    <div class="agent-entities" v-if="entitiesState.length > 0">
+      <span class="entity-chip" v-for="(e, i) in entitiesState" :key="i">{{ e.type }}: {{ e.normalized || e.value }}</span>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import SlotPicker from './SlotPicker';
@@ -87,7 +110,15 @@ const emit = defineEmits(['close', 'minimize']);
 const chatStore = useChatStore();
 const input = ref('');
 const messages = ref<Array<{ author: string; text: string }>>([]);
+const suggestions = ref<Array<string>>([]);
+const intent = ref<string | null>(null);
+const entitiesState = ref<Array<{type:string; key:string; value:string; normalized?:string; valid?:boolean;}>>([]);
+const summary = ref<string | null>(null);
+const errorMessage = ref<string | null>(null);
+const autoSend = ref<boolean>(false);
+const autoCreate = ref<boolean>(false);
 const messagesEl = ref<HTMLElement | null>(null);
+let listenersRegistered = false;
 
 // 📅 Slot Picker state
 const showSlotPicker = ref(false);
@@ -106,42 +137,66 @@ function minimize() {
   emit('minimize', props.agentKey);
 }
 
+function scrollToBottom() {
+  nextTick(() => {
+    if (messagesEl.value) {
+      try {
+        messagesEl.value.scrollTo({ top: messagesEl.value.scrollHeight, behavior: 'smooth' });
+      } catch (_) {
+        messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+      }
+    }
+  });
+}
+
 function send() {
   const text = input.value.trim();
   if (!text || !chatStore.socket) return;
 
-  console.log(`📤 [AgentPane ${props.agentKey}] Enviando mensagem:`, text, 'contactId:', props.contactId);
-
-  // Envia para o backend usando menção ao agente (servidor salva e responde)
-  const payload = {
-    author: chatStore.currentUser,
-    text: `@${props.agentKey} ${text}`.trim(),
-    type: 'text',
-    tempId: `agent_${Date.now()}_${Math.random()}`,
-    contactId: props.contactId  // 🆕 Inclui contactId para vincular à conversa
-  };
-
-  try {
-    chatStore.socket.emit('chat:send', payload);
-    input.value = '';
-    // Não adiciona localmente - aguarda backend retornar via agent:message
-    console.log(`✅ [AgentPane ${props.agentKey}] Mensagem enviada com contactId:`, props.contactId);
-  } catch (e) {
-    console.error(`❌ [AgentPane ${props.agentKey}] Erro ao enviar:`, e);
+  const authStore = useAuthStore();
+  const userName = authStore.user?.name || 'Você';
+  const userId = authStore.user?.id || chatStore.currentUser; // Usa ID real; fallback para nome apenas se inexistente
+  const contactId = props.contactId || chatStore.currentContactId;
+  if (!contactId) {
+    console.warn(`⚠️ [AgentPane ${props.agentKey}] Sem contactId para enviar contexto. Abra o painel a partir de uma conversa.`);
+    return;
   }
+
+  console.log(`📤 [AgentPane ${props.agentKey}] Enviando com contexto:`, {
+    text,
+    contactId,
+    userId
+  });
+
+  // 🆕 Envia via agent:send (novo handler com contexto)
+  chatStore.socket.emit('agent:send', {
+    agentKey: props.agentKey,
+    message: text,
+    userId,
+    userName: userName,
+    contactId  // 🎯 ID do contato para buscar contexto
+  });
+
+  // Adiciona mensagem localmente
+  messages.value.push({
+    author: userName,
+    text: text
+  });
+
+  input.value = '';
+  scrollToBottom();
 }
 
 function onNewMessage(msg: any) {
   console.log('📨 AgentChatPane recebeu agent:message:', msg, 'para agentKey:', props.agentKey, 'contactId:', props.contactId);
-  
   // Filtra apenas mensagens para este agente E este contato
   if (!msg || !msg.agentKey || msg.agentKey !== props.agentKey) {
-    console.log('⏭️  Mensagem ignorada (agentKey diferente):', msg.agentKey, '!==', props.agentKey);
+    console.log('⏭️  Mensagem ignorada (agentKey diferente):', msg?.agentKey, '!==', props.agentKey);
     return;
   }
-  
-  // 🆕 Verifica se a mensagem pertence a este contato (se contactId está definido)
-  if (props.contactId && msg.contactId && msg.contactId !== props.contactId) {
+
+  // Se ambos têm contactId, compara como string
+  if (props.contactId && msg.contactId && String(msg.contactId) !== String(props.contactId)) {
     console.log('⏭️  Mensagem ignorada (contactId diferente):', msg.contactId, '!==', props.contactId);
     return;
   }
@@ -161,6 +216,88 @@ function onNewMessage(msg: any) {
       messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
     }
   });
+
+  // Atualiza intent e entidades se recebidos
+  if (msg.nlp) {
+    intent.value = msg.nlp.intent;
+    entitiesState.value = (msg.nlp.entities || []).map((e: any) => ({ type: e.type, key: e.key, value: e.value, normalized: e.normalized, valid: e.valid }));
+  }
+  // Se houver calendarSuggestions, adiciona como sugestões no painel
+  if (msg.calendarSuggestions && Array.isArray(msg.calendarSuggestions)) {
+    const altSug = msg.calendarSuggestions.map((s: string) => `Sugestão de horário: ${s}`);
+    suggestions.value = [...(suggestions.value || []), ...altSug];
+  }
+}
+
+function onAgentError(data: any) {
+  console.warn('⚠️ Agent error received:', data);
+  if (!data) return;
+  // Mostrar erro somente se for para este agente
+  if (data.agentKey && data.agentKey !== props.agentKey) return;
+  const errText = data.error || data.message || 'Erro desconhecido do agente';
+  errorMessage.value = errText;
+  // Aparece como mensagem de sistema também
+  messages.value.push({ author: 'Sistema', text: `Erro do agente: ${errText}` });
+  nextTick(() => scrollToBottom());
+}
+
+function onNewSuggestions(data: any) {
+  console.log('📨 AgentChatPane recebeu agent:suggestions:', data);
+  if (!data || data.agentKey !== props.agentKey) return;
+  if (props.contactId && data.contactId && data.contactId !== props.contactId) return;
+  suggestions.value = data.suggestions || [];
+  nextTick(() => scrollToBottom());
+}
+
+function registerSocketListeners() {
+  if (!chatStore.socket || listenersRegistered) return;
+  console.log(`🎧 [AgentPane ${props.agentKey}] Registrando listeners de socket`);
+  listenersRegistered = true;
+  chatStore.socket.on('agent:message', onNewMessage);
+  chatStore.socket.on('agent:suggestions', onNewSuggestions);
+  chatStore.socket.on('agent:error', onAgentError);
+  chatStore.socket.on('agent:show-slot-picker', (data: any) => {
+    if (data.agentKey === props.agentKey) {
+      // Opcional: filtra por contactId se vier no payload
+      if (props.contactId && data.contactId && String(data.contactId) !== String(props.contactId)) {
+        return;
+      }
+      console.log('📅 Mostrando SlotPicker para', props.agentKey, data);
+      slotPickerData.value = {
+        customerEmail: data.customerEmail,
+        customerPhone: data.customerPhone
+      };
+      showSlotPicker.value = true;
+      scrollToBottom();
+    }
+  });
+  chatStore.socket.on('agent:summary', (data: any) => {
+    if (data.agentKey === props.agentKey) {
+      if (props.contactId && data.contactId && data.contactId !== props.contactId) {
+        return;
+      }
+      summary.value = data.summary;
+      messages.value.push({ author: `${props.title} (Resumo)`, text: data.summary });
+      scrollToBottom();
+    }
+  });
+  chatStore.socket.on('agent:auto-create-updated', (data: any) => {
+    if (data.agentKey === props.agentKey) {
+      autoCreate.value = !!data.autoCreate;
+    }
+  });
+}
+
+function unregisterSocketListeners() {
+  if (!chatStore.socket || !listenersRegistered) return;
+  console.log(`👋 [AgentPane ${props.agentKey}] Removendo listeners de socket`);
+  chatStore.socket.off('agent:message', onNewMessage);
+  chatStore.socket.off('agent:show-slot-picker');
+  chatStore.socket.off('agent:suggestions', onNewSuggestions);
+  chatStore.socket.off('agent:summary');
+  chatStore.socket.off('agent:auto-create-updated');
+  chatStore.socket.off('agent:error', onAgentError);
+  listenersRegistered = false;
 }
 
 onMounted(async () => {
@@ -204,6 +341,8 @@ onMounted(async () => {
           timestamp: msg.timestamp
         }));
         console.log(`📚 [AgentPane ${props.agentKey}] Carregadas ${messages.value.length} mensagens do histórico`);
+        // Scroll to bottom after loading history
+        nextTick(() => scrollToBottom());
       } else {
         // Mensagem inicial apenas se não houver histórico
         messages.value.push({
@@ -228,61 +367,67 @@ onMounted(async () => {
     });
   }
   
-  // Registra listener para novas mensagens de agentes (evento específico)
-  if (chatStore.socket) {
-    console.log(`🎧 [AgentPane ${props.agentKey}] Registrando listener 'agent:message'`);
-    chatStore.socket.on('agent:message', onNewMessage);
-    
-    // 📅 Listener para mostrar Slot Picker
-    chatStore.socket.on('agent:show-slot-picker', (data: any) => {
-      if (data.agentKey === props.agentKey) {
-        console.log('📅 Mostrando SlotPicker para', props.agentKey, data);
-        slotPickerData.value = {
-          customerEmail: data.customerEmail,
-          customerPhone: data.customerPhone
-        };
-        showSlotPicker.value = true;
-        scrollToBottom();
-      }
-    });
-  }
+  registerSocketListeners();
 });
 
+// Re-registra listeners quando o socket é (re)conectado após montagem
+watch(() => chatStore.socket?.id, () => {
+  unregisterSocketListeners();
+  registerSocketListeners();
+}, { immediate: true });
+
 onBeforeUnmount(() => {
-  if (chatStore.socket) {
-    console.log(`👋 [AgentPane ${props.agentKey}] Removendo listener 'agent:message'`);
-    chatStore.socket.off('agent:message', onNewMessage);
-    chatStore.socket.off('agent:show-slot-picker');
-  }
+  unregisterSocketListeners();
 });
 
 // 📅 Quando cliente seleciona um slot
-async function handleSlotSelected(data: { date: string; time: string; customerEmail: string }) {
+async function handleSlotSelected(data: { date: string; time: string; customerEmail: string; customerPhone?: string }) {
   console.log('📅 Slot selecionado:', data);
   
   // Fecha o picker
   showSlotPicker.value = false;
   
-  // Envia mensagem informando a escolha para o SDR processar
-  if (chatStore.socket) {
-    const message = `Escolhi o dia ${data.date} às ${data.time}. Meu email é ${data.customerEmail}`;
-    
-    chatStore.socket.emit('chat:send', {
-      author: chatStore.currentUser,
-      text: `@${props.agentKey} ${message}`,
-      type: 'text',
-      tempId: `slot_${Date.now()}`,
-      contactId: props.contactId
+    // Envia confirmação de agendamento para backend via agent:schedule-confirm
+    chatStore.socket.emit('agent:schedule-confirm', {
+      agentKey: props.agentKey,
+      contactId: props.contactId,
+      date: data.date,
+      time: data.time,
+      customerEmail: data.customerEmail,
+      phone: data.customerPhone
     });
-    
-    // Adiciona mensagem localmente
+    // Also push a local log message for chat timeline (intentional duplication for record)
+    const message = `Escolhi o dia ${data.date} às ${data.time}. Meu email é ${data.customerEmail}`;
     messages.value.push({
       author: chatStore.currentUser,
       text: message
     });
-    
+  
     scrollToBottom();
+}
+
+function applySuggestion(suggestion: string) {
+  if (!suggestion) return;
+  input.value = suggestion;
+  if (autoSend.value) {
+    send();
   }
+}
+
+function toggleAutoSend() {
+  autoSend.value = !autoSend.value;
+}
+
+function toggleAutoCreate() {
+  autoCreate.value = !autoCreate.value;
+  if (chatStore.socket) {
+    chatStore.socket.emit('agent:set-auto-create', { agentKey: props.agentKey, autoCreate: autoCreate.value });
+  }
+}
+
+function onRequestSummary() {
+  if (!chatStore.socket) return;
+  chatStore.socket.emit('agent:request-summary', { agentKey: props.agentKey, contactId: props.contactId });
 }
 </script>
 
@@ -419,6 +564,25 @@ async function handleSlotSelected(data: { date: string; time: string; customerEm
   background: var(--ds-color-chat-background);
 }
 
+.agent-suggestions {
+  display: flex;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-lg);
+  overflow-x: auto;
+  background: var(--ds-color-chat-background);
+  border-top: 1px solid var(--ds-color-border);
+}
+.suggestion-chip {
+  background: var(--ds-color-primary);
+  color: var(--ds-color-text-white);
+  padding: 6px 10px;
+  border-radius: var(--ds-radius-lg);
+  font-size: var(--ds-font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.suggestion-chip:hover { opacity: 0.9; }
+
 .agent-input-field {
   flex: 1;
   padding: var(--ds-spacing-sm) var(--ds-spacing-md);
@@ -459,6 +623,30 @@ async function handleSlotSelected(data: { date: string; time: string; customerEm
   cursor: not-allowed;
 }
 
+.agent-intent {
+  padding: var(--ds-spacing-xs) var(--ds-spacing-lg);
+  background: color-mix(in srgb, var(--ds-color-chat-background) 85%, white 15%);
+  border-bottom: 1px solid var(--ds-color-border);
+  display: flex;
+  gap: var(--ds-spacing-sm);
+  align-items: center;
+}
+.agent-intent-text {
+  font-size: var(--ds-font-size-xs);
+  color: var(--ds-color-text-primary);
+}
+.agent-entities {
+  display: flex;
+  gap: var(--ds-spacing-xs);
+}
+.entity-chip {
+  background: var(--ds-color-primary);
+  color: var(--ds-color-text-white);
+  padding: 4px 8px;
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
+}
+
 .agent-messages::-webkit-scrollbar {
   width: 6px;
 }
@@ -470,5 +658,14 @@ async function handleSlotSelected(data: { date: string; time: string; customerEm
 .agent-messages::-webkit-scrollbar-thumb {
   background: var(--ds-color-shadow);
   border-radius: 3px;
+}
+
+.agent-error {
+  background: color-mix(in srgb, var(--ds-color-danger) 8%, var(--ds-color-chat-background) 92%);
+  color: var(--ds-color-danger);
+  padding: 6px 10px;
+  border-radius: var(--ds-radius-sm);
+  margin-bottom: var(--ds-spacing-md);
+  text-align: left;
 }
 </style>

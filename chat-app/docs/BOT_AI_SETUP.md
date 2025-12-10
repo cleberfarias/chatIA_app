@@ -42,12 +42,13 @@ docker compose up --build -d api
 /ai Me conte uma piada
 ```
 
-### Opção 2: Mencionar o bot
+### Opção 2: Usar o painel do bot (recomendado)
 
-```
-@bot O que é Docker?
-bot, como funciona o Socket.IO?
-hey bot qual a diferença entre let e const?
+```text
+Abra o painel do bot (ou painel 'bot') e envie perguntas como:
+"O que é Docker?"
+"Como funciona o Socket.IO?"
+"Qual a diferença entre let e const?"
 ```
 
 ---
@@ -56,19 +57,19 @@ hey bot qual a diferença entre let e const?
 
 **Perguntas gerais:**
 ```
-@bot O que você pode fazer?
+Abra o painel do bot e envie: "O que você pode fazer?"
 /ai Explique REST API
 ```
 
 **Ajuda com código:**
 ```
-@bot Como fazer um loop em Python?
+Abra o painel do bot e envie: "Como fazer um loop em Python?"
 /ai Qual a diferença entre async e sync?
 ```
 
 **Dicas e sugestões:**
 ```
-@bot Me dê 3 dicas de produtividade
+Abra o painel do bot e envie: "Me dê 3 dicas de produtividade"
 /ai Sugira um nome para meu projeto
 ```
 

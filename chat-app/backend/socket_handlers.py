@@ -2,6 +2,7 @@ import os
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional
+from collections import defaultdict
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -13,19 +14,22 @@ from bots.core import is_command, run_command
 from bots.automations import start_scheduler, load_and_schedule_all, handle_keyword_if_matches
 from bots.ai_bot import ask_chatgpt, is_ai_question, clean_bot_mention, clear_conversation, get_conversation_count
 from bots.agents import (
-    detect_agent_mention,
     get_agent,
     clean_agent_mention,
     handle_agent_command,
-    list_all_agents
+    list_all_agents,
+    generate_agent_suggestions
 )
 from transcription import transcribe_from_s3
 from socket_manager import sio
+import traceback
 
 # Sessões/mapeamentos
-guru_sessions = {}
+open_agent_sessions = defaultdict(set)
 active_sessions = {}
 user_sessions = {}
+# Prefs por usuário para auto-criação de eventos (user_id, agent_key) -> bool
+agent_auto_create_per_user = {}
 
 # Dono para roteamento de mensagens externas (WhatsApp)
 WA_OWNER_USER_ID = os.getenv("WA_OWNER_USER_ID")
@@ -39,6 +43,158 @@ def emit_to_user(payload: dict, target_user_id: Optional[str] = None):
             return sio.emit("chat:new-message", payload, room=target_sid)
         return None
     return sio.emit("chat:new-message", payload)
+
+
+async def process_agent_message(sid, data):
+    """
+    Handler para mensagens enviadas aos agentes IA com contexto da conversa.
+    Modularized into a module-level function so it can be tested directly.
+    """
+    print(f"📨 [Agent] Mensagem recebida de {sid}: {data}")
+    
+    agent_key = data.get("agentKey")
+    message = data.get("message", "").strip()
+    contact_id = data.get("contactId")
+
+    # Preferir dados do socket (autenticados) para user_id/user_name
+    environ = sio.get_environ(sid)
+    user_id = (environ or {}).get("user_id") or data.get("userId")
+    user_name = (environ or {}).get("user_name") or data.get("userName", "Usuário")
+    
+    if not agent_key or not message or not user_id:
+        await sio.emit("agent:error", {"error": "Dados inválidos"}, to=sid)
+        return
+    
+    from bots.agents import get_agent
+    agent = get_agent(agent_key, user_id)
+    
+    if not agent:
+        await sio.emit("agent:error", {"error": f"Agente '{agent_key}' não encontrado"}, to=sid)
+        return
+
+    try:
+        # Build conversation context
+        from bots.context_loader import get_conversation_context
+        from bots.entities import extract_entities
+        from database import agent_messages_collection, messages_collection
+
+        conversation_context = []
+        if contact_id:
+            try:
+                conversation_context = await get_conversation_context(user_id=user_id, contact_id=contact_id, limit=20, hours_back=24)
+            except Exception as ctx_error:
+                print(f"⚠️ [Agent] Erro ao buscar contexto: {ctx_error}")
+
+        # Merge agent messages history
+        history_docs = await agent_messages_collection.find({
+            "userId": user_id,
+            "agentKey": agent_key,
+            "contactId": contact_id
+        }).sort("createdAt", -1).limit(50).to_list(50)
+        # reverse so earlier messages come first
+        agent_msgs_texts = [d.get("text", "") for d in reversed(history_docs or [])]
+
+        # Compose conversation_text for entity extraction
+        general_history_texts = []
+        if contact_id:
+            general_docs = await messages_collection.find({
+                "$or": [
+                    {"userId": user_id, "contactId": contact_id},
+                    {"userId": contact_id, "contactId": user_id}
+                ]
+            }).sort("createdAt", -1).limit(50).to_list(50)
+            general_history_texts = [d.get("text", "") for d in reversed(general_docs or [])]
+
+        conversation_text = " ".join([*(agent_msgs_texts or []), *(general_history_texts or [])])
+        if conversation_text.strip():
+            conversation_text += " " + message
+        else:
+            conversation_text = message
+
+        # Extract simple entities
+        entities = extract_entities(conversation_text)
+
+        # Build response using agent (with context when available)
+        if conversation_context:
+            base_response = await agent.ask_with_context(
+                message=message,
+                user_id=user_id,
+                user_name=user_name,
+                contact_id=contact_id,
+                conversation_context=conversation_context
+            )
+        else:
+            base_response = await agent.ask(message=message, user_id=user_id, user_name=user_name)
+
+        # Persist simple user + agent messages (agent messages get _id)
+        from datetime import datetime
+        user_msg_doc = {
+            "agentKey": agent_key,
+            "userId": user_id,
+            "contactId": contact_id,
+            "author": user_name,
+            "text": message,
+            "role": "user",
+            "createdAt": datetime.utcnow()
+        }
+        await agent_messages_collection.insert_one(user_msg_doc)
+
+        agent_msg_doc = {
+            "agentKey": agent_key,
+            "userId": user_id,
+            "contactId": contact_id,
+            "author": agent.get_display_name(),
+            "text": base_response,
+            "role": "assistant",
+            "createdAt": datetime.utcnow()
+        }
+        result = await agent_messages_collection.insert_one(agent_msg_doc)
+
+        # Try to generate suggestions but continue on failure
+        suggestions = []
+        try:
+            suggestions = await generate_agent_suggestions(agent, conversation_context or [], user_id, user_name, n_suggestions=3)
+        except Exception as e:
+            print(f"⚠️ Erro ao gerar sugestões: {e}")
+            traceback.print_exc()
+
+        def _serialize_entities(entities_obj: dict) -> list:
+            result = []
+            if not entities_obj:
+                return result
+            for k, v in entities_obj.items():
+                result.append({
+                    "type": v.type,
+                    "key": k,
+                    "value": v.value,
+                    "normalized": getattr(v, "normalized", None),
+                    "valid": getattr(v, "valid", True),
+                    "metadata": getattr(v, "metadata", {})
+                })
+            return result
+
+        serialized_entities = _serialize_entities(entities or {})
+
+        # Emit response
+        await sio.emit("agent:message", {
+            "id": str(result.inserted_id),
+            "agentKey": agent_key,
+            "contactId": contact_id,
+            "author": agent.get_display_name(),
+            "text": base_response,
+            "timestamp": int(datetime.utcnow().timestamp() * 1000),
+            "nlp": {
+                "intent": None,
+                "confidence": None,
+                "entities": serialized_entities
+            },
+            "suggestions": suggestions
+        }, to=sid)
+    except Exception as e:
+        print(f"❌ [Agent] Error processing message: {e}")
+        import traceback
+        traceback.print_exc()
+        await sio.emit("agent:error", {"error": f"Erro ao processar: {str(e)}"}, to=sid)
 
 
 def register_socket_handlers():
@@ -69,6 +225,7 @@ def register_socket_handlers():
             return True
         except Exception as e:
             print(f"❌ Token inválido: {e} - {sid}")
+            traceback.print_exc()
             return False
 
     @sio.event
@@ -104,6 +261,7 @@ def register_socket_handlers():
                 print(f"⚠️  Typing sem contactId - ignorado")
         except Exception as e:
             print(f"❌ Erro chat:typing: {e}")
+            traceback.print_exc()
 
     @sio.on("chat:mark-read")
     async def handle_mark_read(sid, data):
@@ -120,6 +278,7 @@ def register_socket_handlers():
             print(f"👁️ Mensagens marcadas como lidas por {user_id}: {len(message_ids)} msgs")
         except Exception as e:
             print(f"❌ Erro chat:mark-read: {e}")
+            traceback.print_exc()
 
     @sio.on("chat:send")
     async def handle_chat_send(sid, data):
@@ -142,9 +301,9 @@ def register_socket_handlers():
                     help_text = """🧠 **Comandos do Guru:**
 
 📝 **Conversa:**
-• `@guru` - Iniciar sessão (não precisa mencionar depois)
-• `tchau` ou `sair` - Encerrar sessão
-• `/ai <pergunta>` - Pergunta direta
+• Abra o painel do Guru para iniciar uma sessão interativa
+• `tchau` ou `sair` - Encerrar sessão (se aberta)
+• `/ai <pergunta>` - Pergunta direta ao Guru (sem abrir painel)
 
 🎨 **Personalização:**
 • `/modo <casual|profissional|tecnico>` - Mudar estilo
@@ -157,7 +316,7 @@ def register_socket_handlers():
 
 🤖 **Agentes Especializados:**
 • `/agentes` - Ver todos os agentes disponíveis
-• `@advogado`, `@vendedor`, `@medico`, `@psicologo` - Falar com especialistas"""
+• Use os painéis de agente para conversar com especialistas (Advogado, Vendedor, Médico, Psicólogo)"""
                     await publish_message(sio.emit, author="Guru 📚", text=help_text, user_id=user_id, target_sid=sid)
                     return
                 if lower in ["/agentes", "/agents"]:
@@ -217,174 +376,16 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
                     await publish_message(sio.emit, author="Guru", text=reply, user_id=user_id, target_sid=sid)
                 return
 
-            # Agentes especializados
-            agent_name = detect_agent_mention(text)
-            if agent_name:
-                from database import agent_messages_collection
-                agent = get_agent(agent_name, user_id)
-                if agent:
-                    clean_text = clean_agent_mention(text, agent_name)
-                    user_msg_doc = {
-                        "_id": ObjectId(),
-                        "agentKey": agent_name,
-                        "author": author,
-                        "text": clean_text if clean_text else f"@{agent_name}",
-                        "userId": user_id,
-                        "contactId": contact_id,
-                        "createdAt": datetime.now(timezone.utc)
-                    }
-                    await agent_messages_collection.insert_one(user_msg_doc)
-                    await sio.emit("agent:message", {
-                        "id": str(user_msg_doc["_id"]),
-                        "agentKey": agent_name,
-                        "author": author,
-                        "text": clean_text if clean_text else f"@{agent_name}",
-                        "timestamp": int(user_msg_doc["createdAt"].timestamp() * 1000),
-                        "contactId": contact_id
-                    }, room=sid)
-                    
-                    # 📅 SDR: Detecta intenção ANTES de gerar resposta
-                    should_show_calendar = False
-                    calendar_data = None
-                    
-                    if agent_name == "sdr" and clean_text:
-                        from bots.nlu import detect_intent
-                        from bots.entities import extract_entities
-                        
-                        # Monta histórico da conversa (inclui TODAS as mensagens: usuário + agente)
-                        history_docs = await agent_messages_collection.find({
-                            "userId": user_id,
-                            "agentKey": "sdr"
-                        }).sort("createdAt", -1).limit(20).to_list(20)
-                        
-                        # Junta todo o texto da conversa (usuário + bot)
-                        conversation_text = " ".join([doc["text"] for doc in reversed(history_docs)])
-                        
-                        # Também adiciona a mensagem atual
-                        conversation_text += " " + clean_text
-                        
-                        print(f"🔍 SDR - Analisando conversa: {conversation_text[:200]}...")
-                        
-                        # Detecta intenção de agendamento
-                        intent_result = await detect_intent(conversation_text, "customer")
-                        entities = extract_entities(conversation_text)
-                        
-                        print(f"🔍 SDR - Intent: {intent_result.name} | Confidence: {intent_result.confidence}")
-                        
-                        # Log detalhado das entidades
-                        has_email = False
-                        has_phone = False
-                        customer_email = None
-                        customer_phone = None
-                        
-                        if entities:
-                            for entity_key, entity in entities.items():
-                                print(f"🔍 SDR - Entity {entity_key}: value='{entity.value}', normalized='{entity.normalized}'")
-                                if entity_key == "email" and entity.valid:
-                                    has_email = True
-                                    customer_email = entity.normalized
-                                elif entity_key == "phone" and entity.valid:
-                                    has_phone = True
-                                    customer_phone = entity.normalized
-                        
-                        # Se há intenção de agendamento E já tem email
-                        if intent_result.name in ["scheduling", "purchase"] and has_email:
-                            should_show_calendar = True
-                            calendar_data = {
-                                "email": customer_email,
-                                "phone": customer_phone
-                            }
-                            print(f"📅 CALENDÁRIO SERÁ MOSTRADO para {customer_email}")
-                    
-                    # Gera resposta do agente (ou customizada se calendário)
-                    if should_show_calendar:
-                        response = f"✅ Perfeito! Detectei seu email {calendar_data['email']}. Vou abrir o calendário para você escolher o melhor horário."
-                    elif clean_text and clean_text.startswith("/"):
-                        response = await handle_agent_command(agent, clean_text, user_id, author)
-                    else:
-                        if clean_text:
-                            response = await agent.ask(clean_text, user_id, author)
-                        else:
-                            response = f"👋 Olá! Sou {agent.get_display_name()}\n\n"
-                            response += f"**Minhas especialidades:**\n"
-                            for specialty in agent.specialties:
-                                response += f"• {specialty}\n"
-                            response += f"\n💡 _Faça sua pergunta ou use @{agent_name} /ajuda para ver comandos_"
-                    
-                    # Salva e envia resposta
-                    agent_msg_doc = {
-                        "_id": ObjectId(),
-                        "agentKey": agent_name,
-                        "author": agent.get_display_name(),
-                        "text": response,
-                        "userId": user_id,
-                        "contactId": contact_id,
-                        "createdAt": datetime.now(timezone.utc)
-                    }
-                    await agent_messages_collection.insert_one(agent_msg_doc)
-                    await sio.emit("agent:message", {
-                        "id": str(agent_msg_doc["_id"]),
-                        "agentKey": agent_name,
-                        "author": agent.get_display_name(),
-                        "text": response,
-                        "timestamp": int(agent_msg_doc["createdAt"].timestamp() * 1000),
-                        "contactId": contact_id
-                    }, room=sid)
-                    
-                    # 📅 Envia evento do calendário DEPOIS da resposta
-                    if should_show_calendar:
-                        print(f"📅 EMITINDO agent:show-slot-picker para {calendar_data['email']}")
-                        await sio.emit("agent:show-slot-picker", {
-                            "agentKey": "sdr",
-                            "customerEmail": calendar_data['email'],
-                            "customerPhone": calendar_data['phone']
-                        }, room=sid)
-                        
-                        # Se já tem data/hora escolhidos, tenta agendar
-                        if entities.get("email") and entities.get("date") and entities.get("time"):
-                            from bots.agents import sdr_try_schedule_meeting
-                            event = await sdr_try_schedule_meeting(conversation_text, user_id, author)
-                            
-                            if event:
-                                # Envia confirmação com links
-                                confirmation_text = f"""
-✅ **Reunião agendada com sucesso!**
-
-📅 **Link do Calendário:** {event.get('htmlLink', 'N/A')}
-📹 **Link do Google Meet:** {event.get('hangoutLink', 'N/A')}
-📧 **Convite enviado para:** {user_email}
-
-Você receberá um email de confirmação com todos os detalhes da reunião.
-"""
-                                
-                                confirmation_doc = {
-                                    "_id": ObjectId(),
-                                    "agentKey": "sdr",
-                                    "author": agent.get_display_name(),
-                                    "text": confirmation_text,
-                                    "userId": user_id,
-                                    "contactId": contact_id,
-                                    "createdAt": datetime.now(timezone.utc)
-                                }
-                                await agent_messages_collection.insert_one(confirmation_doc)
-                                await sio.emit("agent:message", {
-                                    "id": str(confirmation_doc["_id"]),
-                                    "agentKey": "sdr",
-                                    "author": agent.get_display_name(),
-                                    "text": confirmation_text,
-                                    "timestamp": int(confirmation_doc["createdAt"].timestamp() * 1000),
-                                    "contactId": contact_id
-                                }, room=sid)
-                    
-                    return
+            # NOTE: Agent mentions removed from chat input processing.
+            # Agents should be invoked only via the Agent Panel (agent:send) or via the frontend UI.
 
             text_lower = text.lower().strip()
-            in_guru_session = guru_sessions.get(user_id, False)
-            is_guru_mention = text_lower.startswith("@guru")
-            is_guru_exit = text_lower in ["tchau", "sair"]
+            in_guru_session = ('guru' in open_agent_sessions.get(user_id, set()))
             is_ai_query = is_ai_question(text)
 
-            if in_guru_session or is_guru_mention or is_guru_exit or is_ai_query:
+            # Agents should be invoked only via panel (agent:open/agent:close) or when
+            # an AI question is detected. Inline @agent controls are deprecated and removed.
+            if in_guru_session or is_ai_query:
                 print(f"🧠 Mensagem para Guru detectada - pulando persistência no banco")
             else:
                 message_create = MessageCreate(**data)
@@ -452,56 +453,10 @@ Você receberá um email de confirmação com todos os detalhes da reunião.
 
             await handle_keyword_if_matches(sio.emit, text)
 
-            if text_lower in ["@guru tchau", "@guru sair", "tchau", "sair"] and user_id in guru_sessions:
-                guru_sessions[user_id] = False
-                from bots.automations import publish_message
-                farewell_text = "👋 Até logo! Foi um prazer conversar com você. Estou aqui quando precisar! 🚀"
-                await publish_message(
-                    sio.emit,
-                    author="Guru 👋",
-                    text=farewell_text,
-                    user_id=user_id,
-                    target_sid=sid
-                )
-                return
+            # Note: Starting and ending Guru sessions via inline commands is deprecated.
+            # Use the agent panel (agent:open/agent:close) instead to open or close agent sessions.
 
-            if text_lower.startswith("@guru") and text_lower not in ["@guru tchau", "@guru sair"]:
-                if user_id not in guru_sessions or not guru_sessions[user_id]:
-                    guru_sessions[user_id] = True
-                    from bots.automations import publish_message
-                    from bots.ai_bot import get_user_mode
-                    import random
-                    if text_lower == "@guru":
-                        mode = get_user_mode(user_id)
-                        greetings = {
-                            "casual": [
-                                "E aí! Bora conversar? Manda a real, sem frescura! 😎",
-                                "Opa! Tô aqui, mano. Pode perguntar o que quiser! 🚀",
-                                "Salve! Qual é a boa? Tô pronto pra te ajudar! 💪"
-                            ],
-                            "profissional": [
-                                "Olá! Estou à disposição para ajudá-lo(a). Como posso ser útil hoje? 💼",
-                                "Bom dia! Pronto para auxiliá-lo(a). O que precisa? 🎯",
-                                "Olá! Seja bem-vindo(a). Em que posso colaborar? 📋"
-                            ],
-                            "tecnico": [
-                                "Sistema iniciado. Pronto para processar suas consultas técnicas. 🔧",
-                                "Sessão ativada. Aguardando input para análise detalhada. 💻",
-                                "Interface pronta. Pode enviar suas queries técnicas. ⚙️"
-                            ]
-                        }
-                        greeting = random.choice(greetings.get(mode, greetings["casual"]))
-                        instructions = "\\n\\n💡 _Agora pode falar direto comigo, sem mencionar @guru a cada mensagem._\\n👋 _Para sair: 'tchau' ou 'sair'_"
-                        await publish_message(
-                            sio.emit,
-                            author="Guru 🧠",
-                            text=greeting + instructions,
-                            user_id=user_id,
-                            target_sid=sid
-                        )
-                        return
-
-            in_guru_session = guru_sessions.get(user_id, False)
+            in_guru_session = ('guru' in open_agent_sessions.get(user_id, set()))
             if is_ai_question(text) or in_guru_session:
                 from bots.automations import publish_message
                 import random
@@ -525,6 +480,7 @@ Você receberá um email de confirmação com todos os detalhes da reunião.
                 await publish_message(sio.emit, author="Guru 🧠", text=ai_response, user_id=user_id, target_sid=sid)
         except Exception as e:
             print(f"❌ Erro ao processar mensagem: {e}")
+            traceback.print_exc()
             await sio.emit("error", {
                 "message": str(e),
                 "tempId": data.get("tempId")
@@ -545,5 +501,190 @@ Você receberá um email de confirmação com todos os detalhes da reunião.
             print(f"👁️ Mensagens marcadas como lidas: {result.modified_count}")
         except Exception as e:
             print(f"❌ Erro em chat:read: {e}")
+
+    async def wrapper_process_agent_message(sid, data):
+        await process_agent_message(sid, data)
+    @sio.on("agent:send")
+    async def handle_agent_message(sid, data):
+        """Wrapper that calls process_agent_message; this improves testability."""
+        await process_agent_message(sid, data)
+
+    # NOTE: Don't return early - let all handlers below be registered
+
+    @sio.on("agent:request-summary")
+    async def handle_agent_request_summary(sid, data):
+        try:
+            environ = sio.get_environ(sid)
+            user_id = environ.get("user_id")
+            user_name = environ.get("user_name") or "Usuário"
+            agent_key = data.get("agentKey")
+            contact_id = data.get("contactId")
+
+            if not agent_key or not user_id:
+                await sio.emit("agent:error", {"error": "Dados inválidos"}, to=sid)
+                return
+
+            from bots.agents import get_agent, generate_conversation_summary
+            agent = get_agent(agent_key, user_id)
+            if not agent:
+                await sio.emit("agent:error", {"error": "Agente não encontrado"}, to=sid)
+                return
+
+            conversation_context = None
+            if contact_id:
+                from bots.context_loader import get_conversation_context
+                conversation_context = await get_conversation_context(user_id, contact_id, limit=40, hours_back=72)
+
+            summary = await generate_conversation_summary(agent, conversation_context or [], user_id, user_name)
+
+            await sio.emit("agent:summary", {
+                "agentKey": agent_key,
+                "contactId": contact_id,
+                "summary": summary
+            }, to=sid)
+        except Exception as e:
+            print(f"❌ agent:request-summary error: {e}")
+            traceback.print_exc()
+            await sio.emit("agent:error", {"error": str(e)}, to=sid)
+
+    @sio.on("agent:set-auto-create")
+    async def handle_agent_set_auto_create(sid, data):
+        try:
+            environ = sio.get_environ(sid)
+            user_id = environ.get("user_id")
+            agent_key = data.get("agentKey")
+            auto_create = bool(data.get("autoCreate", False))
+            if not user_id or not agent_key:
+                return
+            agent_auto_create_per_user[(user_id, agent_key.lower())] = auto_create
+            print(f"🔁 Auto-create set for {user_id}/{agent_key}: {auto_create}")
+            await sio.emit("agent:auto-create-updated", {"agentKey": agent_key, "autoCreate": auto_create}, to=sid)
+        except Exception as e:
+            print(f"❌ agent:set-auto-create error: {e}")
+            traceback.print_exc()
+            await sio.emit("agent:error", {"error": str(e)}, to=sid)
+
+    @sio.on("agent:schedule-confirm")
+    async def handle_agent_schedule_confirm(sid, data):
+        """
+        Handler para criação de evento quando usuário confirma via interface.
+        { agentKey, contactId, date, time, customerEmail }
+        """
+        try:
+            environ = sio.get_environ(sid)
+            user_id = environ.get("user_id")
+            user_name = environ.get("user_name") or "Usuário"
+            agent_key = data.get("agentKey")
+            contact_id = data.get("contactId")
+            date_str = data.get("date")
+            time_str = data.get("time")
+            customer_email = data.get("customerEmail")
+
+            if not agent_key or not user_id or not customer_email or not date_str or not time_str:
+                await sio.emit("agent:error", {"error": "Dados inválidos para agendamento"}, to=sid)
+                return
+
+            from bots.agents import get_agent, sdr_schedule_event
+            agent = get_agent(agent_key, user_id)
+            if not agent:
+                await sio.emit("agent:error", {"error": "Agente não encontrado"}, to=sid)
+                return
+
+            # Verifica permissão de criação
+            if not getattr(agent, 'allow_calendar_creation', False):
+                await sio.emit("agent:error", {"error": "Agente não possui permissão para criar eventos"}, to=sid)
+                return
+
+            # Parse date/time
+            from datetime import datetime, timedelta
+            start_datetime = datetime.fromisoformat(f"{date_str}T{time_str}:00")
+            end_datetime = start_datetime + timedelta(hours=1)
+
+            event = await sdr_schedule_event(
+                start_datetime=start_datetime,
+                end_datetime=end_datetime,
+                customer_email=customer_email,
+                customer_name=user_name,
+                customer_phone=data.get('phone'),
+                user_id=user_id,
+                user_name=user_name,
+                contact_id=contact_id
+            )
+
+            if not event:
+                await sio.emit("agent:error", {"error": "Falha ao criar evento"}, to=sid)
+                return
+
+            confirmation_text = f"\n✅ **Reunião agendada com sucesso!**\n\n📅 **Link do Calendário:** {event.get('htmlLink', 'N/A')}\n📹 **Link do Google Meet:** {event.get('hangoutLink', 'N/A')}\n📧 **Convite enviado para:** {customer_email}\n"
+            await sio.emit("agent:message", {
+                "id": str(ObjectId()),
+                "agentKey": agent_key,
+                "contactId": contact_id,
+                "author": agent.get_display_name(),
+                "text": confirmation_text,
+                "timestamp": int(datetime.utcnow().timestamp() * 1000)
+            }, to=sid)
+
+            # Também publica no chat principal (para contato e atendente)
+            try:
+                from bots.automations import publish_message
+                await publish_message(
+                    sio.emit,
+                    author=agent.get_display_name(),
+                    text=confirmation_text,
+                    user_id=user_id,
+                    contact_id=contact_id
+                )
+            except Exception as pub_err:
+                print(f"⚠️ Falha ao publicar confirmação no chat principal: {pub_err}")
+
+        except Exception as e:
+            print(f"❌ agent:schedule-confirm error: {e}")
+            traceback.print_exc()
+            await sio.emit("agent:error", {"error": str(e)}, to=sid)
+
+    @sio.on("agent:open")
+    async def handle_agent_open(sid, data):
+        """Handler para abrir um painel de agente (ex.: Guru)."""
+        try:
+            environ = sio.get_environ(sid)
+            user_id = environ.get("user_id")
+            agent_key = data.get("agentKey")
+            contact_id = data.get("contactId")
+            print(f"🔓 Agent open request: user={user_id}, agentKey={agent_key}, contactId={contact_id}")
+            if not user_id or not agent_key:
+                return
+            # Ativa sessão para Guru (agora controlada via agent:open/agent:close)
+            if agent_key:
+                open_agent_sessions[user_id].add(agent_key.lower())
+                print(f"🧠 Sessão do agente '{agent_key}' ativada para user {user_id}")
+                await sio.emit("agent:opened", {"agentKey": agent_key}, room=sid)
+                # Se o usuário pediu por auto-create em sessão (persistido em agent_auto_create_per_user), atualiza mapa
+                pref = data.get('autoCreate', None)
+                if pref is not None:
+                    agent_auto_create_per_user[(user_id, agent_key.lower())] = bool(pref)
+        except Exception as e:
+            print(f"❌ Agent open error: {e}")
+
+    @sio.on("agent:close")
+    async def handle_agent_close(sid, data):
+        """Handler para fechar um painel de agente (ex.: Guru)."""
+        try:
+            environ = sio.get_environ(sid)
+            user_id = environ.get("user_id")
+            agent_key = data.get("agentKey")
+            contact_id = data.get("contactId")
+            print(f"🔒 Agent close request: user={user_id}, agentKey={agent_key}, contactId={contact_id}")
+            if not user_id or not agent_key:
+                return
+            if agent_key:
+                open_agent_sessions[user_id].discard(agent_key.lower())
+                print(f"🧠 Sessão do agente '{agent_key}' desativada para user {user_id}")
+                await sio.emit("agent:closed", {"agentKey": agent_key}, room=sid)
+                # Optional: clean up applied preferences
+                if (user_id, agent_key.lower()) in agent_auto_create_per_user:
+                    del agent_auto_create_per_user[(user_id, agent_key.lower())]
+        except Exception as e:
+            print(f"❌ Agent close error: {e}")
 
     return sio

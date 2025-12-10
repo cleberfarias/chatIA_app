@@ -49,7 +49,8 @@ Este projeto é licenciado sob **AGPL-3.0** com termos adicionais de proteção:
 - ✅ **Roteamento** com Vue Router
 - ✅ **Sistema de Agentes IA** com 5 especialistas pré-configurados
 - ✅ **Bots Personalizados** com credenciais OpenAI individuais
-- ✅ **IA Conversacional** integrada ao chat (@guru, @advogado, @vendedor, @medico, @psicologo)
+- ✅ **IA Conversacional** integrada via painel de agentes (Guru, Advogado, Vendedor, Médico, Psicólogo) — abra o painel do agente clicando no chip para iniciar diálogo com ele
+ - ✅ **SDR** tem opção *Auto-agendar* no painel (toggle) — quando ativado o SDR pode criar eventos sem confirmação; por padrão, o agendamento requer confirmação pelo atendente
 
 ## 🗺️ Arquitetura Visual
 
@@ -215,26 +216,26 @@ O sistema inclui **5 agentes IA** pré-configurados com personalidades e experti
 
 | Agente | Menção | Emoji | Especialidades |
 |--------|--------|-------|----------------|
-| **Guru** | `@guru` | 🧠 | Programação, Arquitetura, Debugging, Code Review |
-| **Dr. Advocatus** | `@advogado` | ⚖️ | Direito Civil/Trabalhista/Consumidor, Contratos |
-| **Sales Pro** | `@vendedor` | 💼 | Prospecção B2B, Técnicas de Fechamento, Objeções |
-| **Dr. Health** | `@medico` | 🩺 | Educação em Saúde, Primeiros Socorros, Prevenção |
-| **MindCare** | `@psicologo` | 🧘 | Gestão de Ansiedade, Mindfulness, Autocuidado |
+| **Guru** | `guru` | 🧠 | Programação, Arquitetura, Debugging, Code Review |
+| **Dr. Advocatus** | `advogado` | ⚖️ | Direito Civil/Trabalhista/Consumidor, Contratos |
+| **Sales Pro** | `vendedor` | 💼 | Prospecção B2B, Técnicas de Fechamento, Objeções |
+| **Dr. Health** | `medico` | 🩺 | Educação em Saúde, Primeiros Socorros, Prevenção |
+| **MindCare** | `psicologo` | 🧘 | Gestão de Ansiedade, Mindfulness, Autocuidado |
 
 ### Como Usar
 
 ```bash
-# Iniciar conversa com agente
-@advogado preciso de ajuda com rescisão de contrato
+# Iniciar conversa com agente via Painel
+# Abra o painel do agente (ex.: advogado) e envie: "preciso de ajuda com rescisão de contrato"
 
-# Ver comandos disponíveis
-@vendedor /ajuda
+# Ver comandos disponíveis no painel do agente (ex.: vendedor)
+# Abra o painel do agente e envie: "/ajuda"
 
-# Limpar histórico do agente
-@guru /limpar
+# Limpar histórico do Guru
+# Abra o painel do Guru e envie: "/limpar"
 
-# Ver contexto da conversa
-@medico /contexto
+# Ver contexto da conversa (no painel do médico)
+# Abra o painel do médico e envie: "/contexto"
 
 # Listar todos os agentes
 /agentes
@@ -251,7 +252,7 @@ O sistema inclui **5 agentes IA** pré-configurados com personalidades e experti
    - **Prompt**: Personalidade e comportamento do bot
    - **Especialidades**: Até 5 áreas de expertise
 3. Clique em **Criar Bot**
-4. Use com `@nomedoeubot sua pergunta`
+4. Use no painel do bot (ou abra o painel do bot e envie sua pergunta)
 
 **Recursos:**
 - ✅ Credenciais OpenAI individuais por bot
@@ -595,7 +596,7 @@ Para documentação técnica detalhada linha por linha, consulte [`DOCUMENTACAO.
 - [x] Breakpoints xs/sm/md/lg/xl
 - [x] Clip icon rotacionado 135° (WhatsApp style)
 - [x] **Sistema de Agentes IA Especializados**
-  - [x] 5 agentes pré-configurados (@guru, @advogado, @vendedor, @medico, @psicologo)
+  - [x] 5 agentes pré-configurados (guru, advogado, vendedor, medico, psicologo)
   - [x] Histórico de conversa por usuário (10 mensagens)
   - [x] Comandos específicos por agente (/ajuda, /limpar, /contexto)
   - [x] Integração com OpenAI GPT-3.5-turbo

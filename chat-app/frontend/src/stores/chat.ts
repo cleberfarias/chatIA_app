@@ -93,13 +93,6 @@ export const useChatStore = defineStore('chat', {
         console.log('🔍 Verificando se é mensagem de agente:', { text: msgText, author: msgAuthor });
         
         const isAgentMessage = 
-          msgText.startsWith('@advogado') || 
-          msgText.startsWith('@medico') || 
-          msgText.startsWith('@médico') || 
-          msgText.startsWith('@psicologo') || 
-          msgText.startsWith('@psicólogo') || 
-          msgText.startsWith('@vendedor') || 
-          msgText.startsWith('@guru') ||
           msgAuthor.includes('advocatus') ||
           msgAuthor.includes('advogado') ||
           msgAuthor.includes('saúde') ||
@@ -144,15 +137,18 @@ export const useChatStore = defineStore('chat', {
           const { useContactsStore } = await import('./contacts');
           const contactsStore = useContactsStore();
           
+          const contactKey = msg.userId || msg.contactId;
           // Se não está visualizando este contato, incrementa unread
-          if (!isFromCurrentContact && !isToCurrentUser) {
-            console.log('📬 Incrementando unread para contato:', msg.userId);
-            contactsStore.incrementUnread(msg.userId);
+          if (!isFromCurrentContact && !isToCurrentUser && contactKey) {
+            console.log('📬 Incrementando unread para contato:', contactKey);
+            contactsStore.incrementUnread(contactKey);
           }
           
           // Atualiza última mensagem do remetente
-          console.log('📝 Atualizando última mensagem do contato:', msg.userId);
-          contactsStore.updateContactLastMessage(msg.userId, msg.text, msg.timestamp);
+          if (contactKey) {
+            console.log('📝 Atualizando última mensagem do contato:', contactKey);
+            contactsStore.updateContactLastMessage(contactKey, msg.text, msg.timestamp);
+          }
         }
       });
 
@@ -278,16 +274,9 @@ export const useChatStore = defineStore('chat', {
 
         // 🚫 Filtra mensagens de agentes
         const filteredMessages = (data.messages || []).filter((msg: Message) => {
-          const msgText = String(msg.text || '').toLowerCase();
           const msgAuthor = String(msg.author || '').toLowerCase();
+          // Agent messages are detected by author name now. Inline @agent mentions are deprecated.
           const isAgentMessage = 
-            msgText.startsWith('@advogado') || 
-            msgText.startsWith('@medico') || 
-            msgText.startsWith('@médico') || 
-            msgText.startsWith('@psicologo') || 
-            msgText.startsWith('@psicólogo') || 
-            msgText.startsWith('@vendedor') || 
-            msgText.startsWith('@guru') ||
             msgAuthor.includes('advocatus') ||
             msgAuthor.includes('advogado') ||
             msgAuthor.includes('saúde') ||

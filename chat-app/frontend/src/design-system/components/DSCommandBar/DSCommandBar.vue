@@ -63,9 +63,9 @@
           variant="flat"
           prepend-icon="mdi-scale-balance"
           class="mr-2 mb-2"
-          @click="onCommand('@advogado ')"
+          @click="onCommand('advogado ')"
         >
-          @advogado ⚖️
+          advogado ⚖️
         </v-chip>
         <v-chip
           size="small"
@@ -73,9 +73,9 @@
           variant="flat"
           prepend-icon="mdi-briefcase-account"
           class="mr-2 mb-2"
-          @click="onCommand('@vendedor ')"
+          @click="onCommand('vendedor ')"
         >
-          @vendedor 💼
+          vendedor 💼
         </v-chip>
         <v-chip
           size="small"
@@ -83,9 +83,9 @@
           variant="flat"
           prepend-icon="mdi-hospital-box"
           class="mr-2 mb-2"
-          @click="onCommand('@medico ')"
+          @click="onCommand('medico ')"
         >
-          @medico 🩺
+          medico 🩺
         </v-chip>
         <v-chip
           size="small"
@@ -93,9 +93,9 @@
           variant="flat"
           prepend-icon="mdi-meditation"
           class="mr-2 mb-2"
-          @click="onCommand('@psicologo ')"
+          @click="onCommand('psicologo ')"
         >
-          @psicologo 🧘
+          psicologo 🧘
         </v-chip>
         <v-chip
           size="small"
@@ -103,9 +103,9 @@
           variant="flat"
           prepend-icon="mdi-calendar-clock"
           class="mr-2 mb-2"
-          @click="onCommand('@sdr ')"
+          @click="onCommand('sdr ')"
         >
-          @sdr 📅
+          sdr 📅
         </v-chip>
         <v-chip
           size="small"

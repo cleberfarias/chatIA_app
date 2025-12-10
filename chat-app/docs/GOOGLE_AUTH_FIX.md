@@ -132,5 +132,5 @@ Quando a autenticação funcionar, você terá:
 
 **Teste o fluxo completo:**
 ```
-@sdr → Digite seu email → "quero agendar" → Calendário aparece → Selecione slot → Confirmação
+Painel SDR → Digite seu email → "quero agendar" → Calendário aparece → Selecione slot → Confirmação
 ```

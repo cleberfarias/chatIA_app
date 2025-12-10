@@ -1,11 +1,11 @@
 """Sistema de Agentes IA Especializados.
 
 Cada agente tem personalidade, expertise e comandos específicos.
-Uso: @advogado, @vendedor, @guru, etc.
+Uso: via Agent Panels (ex.: advogado, vendedor, guru). Inline @agent usages are deprecated.
 """
 
 import os
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from collections import defaultdict, deque
 import httpx
 from dotenv import load_dotenv
@@ -37,6 +37,11 @@ class Agent:
         self.commands = commands
         self.openai_api_key = openai_api_key or OPENAI_API_KEY
         self.openai_account = openai_account
+        # Permite que este agente crie eventos diretamente no Google Calendar
+        # (padrão: False). O SDR deve ter True.
+        self.allow_calendar_creation: bool = False
+        # Se True, este agente pode criar eventos automaticamente sem confirmação do atendente
+        self.allow_calendar_auto_create: bool = False
         # Histórico de conversa por usuário (máximo 10 mensagens)
         self.conversation_history: dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
     
@@ -118,6 +123,127 @@ class Agent:
             return f"⏱️ {self.name} demorou para responder. Tente novamente."
         except Exception as e:
             return f"❌ Erro: {str(e)}"
+    
+    async def ask_with_context(
+        self,
+        message: str,
+        user_id: str,
+        user_name: str,
+        contact_id: Optional[str] = None,
+        conversation_context: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """
+        Envia pergunta ao agente COM contexto da conversa principal.
+        
+        Por que criar método separado?
+        - Mantém compatibilidade com ask() original
+        - Permite usar contexto opcionalmente
+        - Facilita A/B testing (com/sem contexto)
+        
+        Args:
+            message: Pergunta do usuário ao agente ("como responder?")
+            user_id: ID do usuário
+            user_name: Nome do usuário
+            contact_id: ID do contato/cliente
+            conversation_context: Histórico já carregado
+            
+        Returns:
+            Resposta contextualizada do agente
+        """
+        if not self.openai_api_key:
+            return f"❌ {self.name} não configurado. Configure OPENAI_API_KEY."
+        
+        # Prepara mensagens base
+        messages = [{"role": "system", "content": self.system_prompt}]
+        
+        # 🎯 AQUI ESTÁ A MÁGICA: Injetar contexto antes da pergunta
+        if conversation_context and len(conversation_context) > 0:
+            # Por que adicionar instrução específica?
+            # - GPT precisa entender QUE existe contexto
+            # - GPT precisa saber COMO usar (não repetir, apenas analisar)
+            context_intro = {
+                "role": "system",
+                "content": (
+                    f"IMPORTANTE: O usuário {user_name} está em uma conversa com um cliente. "
+                    "Você tem acesso ao HISTÓRICO desta conversa abaixo. "
+                    "Use este contexto para fornecer sugestões RELEVANTES e ESPECÍFICAS.\n\n"
+                    "Exemplos de perguntas que você receberá:\n"
+                    "- 'como responder para esse cliente?'\n"
+                    "- 'o que falar agora?'\n"
+                    "- 'gera um resumo desta conversa'\n"
+                    "- 'qual o próximo passo?'\n\n"
+                    "INSTRUÇÕES:\n"
+                    "1. NÃO repita o histórico\n"
+                    "2. ANALISE o contexto e forneça sugestão prática\n"
+                    "3. Seja ESPECÍFICO ao cliente atual\n"
+                    "4. Considere o ton e momento da conversa\n\n"
+                    "HISTÓRICO DA CONVERSA:"
+                )
+            }
+            messages.append(context_intro)
+            
+            # Por que extend() e não append()?
+            # - conversation_context é uma LISTA de mensagens
+            # - Cada mensagem já está formatada {"role": ..., "content": ...}
+            messages.extend(conversation_context)
+            
+            # Separador visual (ajuda GPT a distinguir contexto de pergunta)
+            messages.append({
+                "role": "system",
+                "content": "--- FIM DO CONTEXTO DA CONVERSA ---\n\n"
+            })
+        
+        # Adiciona histórico do PRÓPRIO agente (conversa interna user↔agente)
+        # Por que manter histórico do agente?
+        # - Continuidade na conversa com o agente
+        # - Agente lembra o que JÁ sugeriu
+        user_history = self.conversation_history[user_id]
+        messages.extend(list(user_history))
+        
+        # Adiciona pergunta atual
+        contextualized_message = f"[Usuário: {user_name}] {message}"
+        messages.append({"role": "user", "content": contextualized_message})
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.openai_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            if self.openai_account:
+                headers["OpenAI-Organization"] = self.openai_account
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    OPENAI_API_URL,
+                    headers=headers,
+                    json={
+                        "model": OPENAI_MODEL,
+                        "messages": messages,
+                        "temperature": 0.7,  # Criatividade moderada
+                        "max_tokens": 600  # Limite de resposta (controle de custo)
+                    }
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                if "choices" in data and len(data["choices"]) > 0:
+                    assistant_message = data["choices"][0]["message"]["content"]
+                    
+                    # Salva no histórico do agente (próxima pergunta terá continuidade)
+                    user_history.append({"role": "user", "content": contextualized_message})
+                    user_history.append({"role": "assistant", "content": assistant_message})
+                    
+                    return assistant_message.strip()
+                
+                return f"❌ {self.name}: Resposta inesperada da API."
+        
+        except httpx.HTTPStatusError as e:
+            return f"❌ {self.name}: Erro API ({e.response.status_code})"
+        except Exception as e:
+            return f"❌ {self.name}: Erro ao processar - {str(e)}"
+
 
 
 # =====================================================
@@ -384,6 +510,9 @@ O sistema JÁ DETECTA automaticamente: emails, telefones, nomes, datas e intenç
         "/qualificar": "Qualifique o lead usando método BANT"
     }
 )
+AGENT_SDR.allow_calendar_creation = True
+AGENT_SDR.allow_calendar_auto_create = False
+AGENT_SDR.allow_calendar_creation = True
 
 
 # =====================================================
@@ -553,11 +682,11 @@ def list_all_agents() -> str:
     result = "🤖 **Agentes IA Especializados Disponíveis:**\n\n"
     
     for agent in AGENTS_REGISTRY.values():
-        result += f"**@{agent.name.lower().replace(' ', '')}** {agent.emoji}\n"
+        result += f"**{agent.name.lower().replace(' ', '')}** {agent.emoji}\n"
         result += f"└─ Especialidades: {', '.join(agent.specialties[:3])}\n\n"
     
-    result += "\n💡 _Use @agente para iniciar conversa_\n"
-    result += "📋 _Use @agente /ajuda para ver comandos_"
+    result += "\n💡 _Abra o painel do agente para iniciar uma conversa (não use @agente)_\n"
+    result += "📋 _Use o painel do agente ou /agentes para ver mais comandos_"
     
     return result
 
@@ -574,21 +703,22 @@ def detect_agent_mention(text: str) -> Optional[str]:
     """
     text_lower = text.lower().strip()
     
-    # Verifica menções diretas com @
+    # Normaliza para remover prefixos '@' (caso o usuário ainda use menções legadas)
+    clean_text = text_lower.lstrip('@')
     for agent_key in AGENTS_REGISTRY.keys():
-        if text_lower.startswith(f"@{agent_key}"):
+        if clean_text.startswith(agent_key):
             return agent_key
     
     # Verifica nomes alternativos
     aliases = {
-        "advogado": ["@advogada", "@dr", "@dra", "@advocatus"],
-        "vendedor": ["@vendedora", "@sales", "@comercial"],
-        "medico": ["@medica", "@doutor", "@doutora", "@health"],
-        "psicologo": ["@psicologa", "@terapeuta", "@mindcare"],
+        "advogado": ["advogada", "dr", "dra", "advocatus"],
+        "vendedor": ["vendedora", "sales", "comercial"],
+        "medico": ["medica", "doutor", "doutora", "health"],
+        "psicologo": ["psicologa", "terapeuta", "mindcare"],
     }
     
     for agent_key, agent_aliases in aliases.items():
-        if any(text_lower.startswith(alias) for alias in agent_aliases):
+        if any(clean_text.startswith(alias) for alias in agent_aliases):
             return agent_key
     
     return None
@@ -607,8 +737,8 @@ def clean_agent_mention(text: str, agent_name: str) -> str:
     """
     text = text.strip()
     
-    # Remove @agente do início
-    prefixes = [f"@{agent_name}", f"@{agent_name.replace(' ', '')}"]
+    # Remove menção de agente do início (compatibilidade com formatos legados)
+    prefixes = [f"{agent_name}", f"{agent_name.replace(' ', '')}", f"@{agent_name}", f"@{agent_name.replace(' ', '')}"]
     
     for prefix in prefixes:
         if text.lower().startswith(prefix):
@@ -645,7 +775,7 @@ async def handle_agent_command(
         result = f"📚 **Comandos do {agent.get_display_name()}:**\n\n"
         for cmd, desc in agent.commands.items():
             result += f"**{cmd}** - {desc}\n"
-        result += f"\n💡 _Exemplo: @{agent.name.lower()} {list(agent.commands.keys())[1]} sua pergunta_"
+        result += f"\n💡 _Exemplo: {agent.name.lower()} {list(agent.commands.keys())[1]} sua pergunta_"
         return result
     
     # Comando universal: /limpar
@@ -663,7 +793,7 @@ async def handle_agent_command(
         prompt = f"O usuário solicitou o comando {command_lower}. {agent.commands[command_lower]}"
         return await agent.ask(prompt, user_id, user_name)
     
-    return f"❓ Comando desconhecido. Use **@{agent.name.lower()} /ajuda** para ver comandos disponíveis."
+    return f"❓ Comando desconhecido. Use **{agent.name.lower()} /ajuda** para ver comandos disponíveis."
 
 
 # =====================================================
@@ -787,3 +917,156 @@ async def sdr_try_schedule_meeting(
         return None
     
     return None
+
+
+async def sdr_schedule_event(
+    start_datetime: 'datetime',
+    end_datetime: 'datetime',
+    customer_email: str,
+    customer_name: str,
+    customer_phone: Optional[str],
+    user_id: str,
+    user_name: str,
+    contact_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Cria evento no Google Calendar com os parâmetros fornecidos.
+    Retorna o evento criado ou None
+    """
+    from integrations.google_calendar import GoogleCalendarService
+    from database import calendar_events_collection
+    from datetime import datetime
+
+    try:
+        calendar_service = GoogleCalendarService()
+        if not calendar_service.authenticate():
+            print("❌ Falha na autenticação do Google Calendar")
+            return None
+
+        event = calendar_service.create_meeting_event(
+            summary=f"Demonstração do Produto - {customer_name}",
+            description=f"Reunião agendada pelo SDR via chat.\nCliente: {customer_name}\nEmail: {customer_email}\nTelefone: {customer_phone or 'Não informado'}",
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            attendee_emails=[customer_email],
+            location="Google Meet",
+            send_notifications=True
+        )
+
+        if event:
+            await calendar_events_collection.insert_one({
+                "google_event_id": event["id"],
+                "customer_id": user_id,
+                "customer_name": customer_name,
+                "customer_email": customer_email,
+                "customer_phone": customer_phone,
+                "agent_id": "sdr",
+                "agent_name": "SDR",
+                "title": f"Demonstração do Produto - {customer_name}",
+                "description": f"Reunião agendada via chat",
+                "start_time": start_datetime,
+                "end_time": end_datetime,
+                "timezone": "America/Sao_Paulo",
+                "location": "Google Meet",
+                "attendees": [customer_email],
+                "meet_link": event.get("hangoutLink"),
+                "calendar_link": event.get("htmlLink"),
+                "status": "scheduled",
+                "reminder_sent": False,
+                "created_at": datetime.utcnow(),
+                "notes": "Agendado pelo SDR via chat"
+            })
+            return event
+    except Exception as e:
+        print(f"❌ Erro ao criar evento no Google Calendar (sdr_schedule_event): {e}")
+        return None
+
+    return None
+
+
+async def generate_agent_suggestions(
+    agent: Agent,
+    conversation_context: list[dict],
+    user_id: str,
+    user_name: str,
+    n_suggestions: int = 3
+) -> list[str]:
+    """
+    Gera N sugestões de resposta curtas usando o agente com contexto.
+
+    Args:
+        agent: Instância do agente a usar para gerar sugestões
+        conversation_context: Histórico da conversa (lista de mensagens)
+        user_id: ID do usuário (atendente)
+        user_name: Nome do atendente
+        n_suggestions: Quantidade de sugestões a gerar
+
+    Returns:
+        Lista de strings com sugestões (pode ser vazia)
+    """
+    try:
+        # Prompt para gerar N sugestões curtas, dê alternativas distintas
+        prompt = (
+            f"Com base no contexto da conversa abaixo, gere {n_suggestions} opções de resposta CURTAS que o atendente "
+            "possa enviar ao cliente. Seja direto, profissional, empático e objetivo. Cada sugestão deve ter no máximo 2 frases." 
+            "Retorne apenas um JSON com uma lista."
+        )
+
+        # Envia para o agente com contexto
+        raw = await agent.ask_with_context(
+            message=prompt,
+            user_id=user_id,
+            user_name=user_name,
+            contact_id=None,
+            conversation_context=conversation_context
+        )
+
+        # Tenta extrair JSON simples (fallback para linhas separadas)
+        import json
+        import re
+        suggestions = []
+        try:
+            # O agente deve retornar algo como: ["sug1","sug2"]
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                suggestions = [str(s).strip() for s in parsed if str(s).strip()]
+        except Exception:
+            # Se não for JSON, tenta quebrar por linhas e filtrar
+            lines = [l.strip() for l in raw.splitlines() if l.strip()]
+            # Remove headers como '1) '
+            clean = [re.sub(r'^\d+\)\s*', '', l) for l in lines]
+            suggestions = clean[:n_suggestions]
+
+        return suggestions[:n_suggestions]
+    except Exception as e:
+        print(f"⚠️ Erro ao gerar sugestões do agente {agent.name}: {e}")
+        return []
+
+
+async def generate_conversation_summary(
+    agent: Agent,
+    conversation_context: list[dict],
+    user_id: str,
+    user_name: str
+) -> str:
+    """
+    Gera um resumo da conversa baseado no contexto fornecido.
+    """
+    try:
+        prompt = (
+            "Resuma a conversa abaixo em poucos pontos (3 a 5), listando: 1) problema/assunto, 2) ações pendentes, 3) próximos passos. "
+            "Retorne o texto em linguagem direta, em português."
+        )
+
+        summary = await agent.ask_with_context(
+            message=prompt,
+            user_id=user_id,
+            user_name=user_name,
+            contact_id=None,
+            conversation_context=conversation_context
+        )
+
+        return summary
+    except Exception as e:
+        print(f"⚠️ Erro ao gerar resumo com agente {agent.name}: {e}")
+        return """❌ Não foi possível gerar resumo no momento. Tente novamente."""

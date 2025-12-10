@@ -7,10 +7,10 @@ Sistema automático que detecta intenção de agendamento e apresenta um calend�
 ## 🔄 Fluxo Completo
 
 ### 1. **Conversa com SDR**
-Cliente inicia conversa com `@sdr` e menciona interesse em reunião:
+Abra o painel do SDR (chip `SDR`) e mencione interesse em reunião no chat do painel:
 
 ```
-Cliente: @sdr Olá, gostaria de conhecer o produto
+Cliente: Olá, gostaria de conhecer o produto (no painel do SDR)
 SDR: Olá! Vou adorar apresentar nosso produto...
 Cliente: Sim, gostaria de agendar uma demonstração
 ```
@@ -94,22 +94,27 @@ function handleSlotSelected(data) {
   
   // Envia para o SDR processar
   socket.emit('chat:send', {
-    text: `@sdr ${message}`,
+    text: `${message}`,
     contactId: props.contactId
   })
 }
 ```
 
-### 6. **Agendamento Automático**
+### 6. **Agendamento com Confirmação (padrão)**
 Backend detecta que agora tem todos os dados (email + data + hora):
 
 ```python
 # socket_handlers.py (linha ~290)
 if entities.get("email") and entities.get("date") and entities.get("time"):
+  # Padrão: o SDR NÃO cria o evento automaticamente. Envia um pedido de confirmação
+  # para o atendente no painel (botão 'Confirmar Agendamento'). Somente quando o atendente
+  # confirmar (ou o usuário habilitar Auto-Agendar), o evento será criado.
+  # Optionally, if auto-create is enabled for this agent/session, create directly:
+  if agent.allow_calendar_auto_create or user_pref_auto:
     event = await sdr_try_schedule_meeting(conversation_text, user_id, author)
     
     if event:
-        # Envia confirmação com links
+        # Envia confirmação com links ao painel do agente
         confirmation = f"""
         ✅ Reunião agendada com sucesso!
         📅 Calendário: {event['htmlLink']}
@@ -320,7 +325,7 @@ docker compose logs api -f | grep "SDR\|slot\|calendar"
 
 1. **Inicie conversa com SDR**
    ```
-   @sdr Olá, quero conhecer o produto
+  (no painel SDR) Olá, quero conhecer o produto
    ```
 
 2. **Forneça seu email**

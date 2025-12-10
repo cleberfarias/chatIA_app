@@ -91,7 +91,7 @@ Especialista em vendas e agendamento:
 
 **Exemplo de uso:**
 ```
-@sdr Oi, gostaria de agendar uma demonstração do produto
+No painel do SDR: Oi, gostaria de agendar uma demonstração do produto
 ```
 
 ### 5. Integração Google Calendar

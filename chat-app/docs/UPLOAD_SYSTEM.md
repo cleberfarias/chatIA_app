@@ -175,7 +175,7 @@ docker compose up --build
    - ✅ Player HTML5 aparece
    - ✅ Áudio reproduz corretamente
    - ✅ Transcrição automática (backend)
-   - ✅ Bot responde se mencionar "@bot"
+  - ✅ Bot responde se o painel do bot estiver aberto ou se o comando /ai for usado
 
 ### 4. Teste de Validação
 

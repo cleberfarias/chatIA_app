@@ -10,7 +10,7 @@ def cmd_help(args: list[str]) -> str:
         "/time - Mostra a hora atual em UTC\n"
         "/ai <pergunta> - Pergunta algo para o ChatGPT\n"
         "/limpar - Limpa o histórico de conversa com o bot\n\n"
-        "💡 Dica: Você também pode chamar o bot com @bot <sua pergunta>\n"
+        "💡 Dica: Abra o painel do bot (ou use /ai) para perguntas. Evite usar @bot em mensagens.\n"
         "🧠 O bot mantém contexto das últimas 10 mensagens da conversa"
     )
 

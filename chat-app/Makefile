@@ -41,6 +41,16 @@ restart: ## Reinicia os containers
 	@echo "$(GREEN)Reiniciando containers...$(RESET)"
 	docker-compose restart
 
+start: up-d ## Alias para iniciar containers em background (cria se não existir)
+	@echo "$(GREEN)Iniciando containers (start)...$(RESET)"
+	docker-compose up -d
+
+recreate: ## Reinicia containers recriando as imagens
+	@echo "$(GREEN)Recriando e reiniciando containers...$(RESET)"
+	docker-compose down
+	docker-compose build --no-cache
+	docker-compose up -d
+
 logs: ## Mostra os logs dos containers
 	docker-compose logs -f
 

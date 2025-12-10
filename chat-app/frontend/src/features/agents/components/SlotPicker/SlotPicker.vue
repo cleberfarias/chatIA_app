@@ -15,7 +15,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  (e: 'slot-selected', data: { date: string, time: string, customerEmail: string }): void
+  (e: 'slot-selected', data: { date: string, time: string, customerEmail: string, customerPhone?: string }): void
   (e: 'close'): void
 }>()
 
@@ -124,6 +124,7 @@ function confirmSchedule() {
     date: formatDateForAPI(selectedDate.value),
     time: startTime,
     customerEmail: customerEmail.value
+    , customerPhone: props.customerPhone
   })
 }
 
@@ -192,7 +193,20 @@ onMounted(() => {
         <div v-else-if="availableSlots.length === 0" class="text-center pa-4 text-grey">
           <v-icon size="48">mdi-calendar-remove</v-icon>
           <p>Nenhum horário disponível neste dia</p>
-          <p class="text-caption">Tente outra data</p>
+          <p class="text-caption mb-2">Tente outra data ou selecione uma das opções abaixo:</p>
+          <div class="fallback-chips">
+            <v-chip
+              v-for="(d, idx) in availableDates.slice(0, 3)"
+              :key="d.toISOString()"
+              color="secondary"
+              variant="outlined"
+              class="ma-1"
+              @click="selectDate(d)"
+            >
+              {{ formatDate(d) }}
+            </v-chip>
+          </div>
+          <p class="text-caption mt-2">Ou envie 2–3 horários que funcionem pra você — eu verifico e agendo.</p>
         </div>
 
         <div v-else class="time-slots">

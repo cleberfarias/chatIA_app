@@ -133,7 +133,7 @@ Cliente: "Oi, preciso marcar uma reunião para discutir o projeto"
   - Intent: scheduling (confidence: 0.92)
   - Sugere: Agente SDR
 
-@sdr: Claro! Para agendar, preciso de:
+SDR (painel): Claro! Para agendar, preciso de:
   - Nome completo
   - Email
   - Telefone
@@ -148,7 +148,7 @@ Cliente: "João Silva, joao@empresa.com, (11) 98765-4321, amanhã às 14h"
   - date: 2025-11-26
   - time: 14:00
 
-@sdr: Perfeito! Criando reunião...
+SDR (painel): Perfeito! Criando reunião...
 ✅ Reunião agendada!
 📅 Link: https://calendar.google.com/...
 📹 Google Meet: https://meet.google.com/...
