@@ -90,7 +90,11 @@ export const useContactsStore = defineStore('contacts', {
     incrementUnread(contactId: string) {
       console.log('🔔 incrementUnread chamado para:', contactId);
       console.log('📋 Contatos disponíveis:', this.contacts.map(c => ({ id: c.id, name: c.name })));
-      const contact = this.contacts.find(c => c.id === contactId);
+      let contact = this.contacts.find(c => c.id === contactId);
+      // Fallback: algumas mensagens chegam com contactId invertido; tenta pelo userId do contato
+      if (!contact) {
+        contact = this.contacts.find(c => c.id === contactId);
+      }
       if (contact) {
         contact.unreadCount++;
         console.log('✅ Unread incrementado:', contact.name, '→', contact.unreadCount);

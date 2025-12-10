@@ -1,7 +1,7 @@
 """Natural Language Understanding - Detecção de Intenções.
 
 Este módulo detecta automaticamente a intenção do usuário sem necessidade
-de comandos explícitos como @agente ou /comando.
+de abrir o painel do agente ou usar comandos explícitos como `/comando`.
 
 Suporta dois modos:
 1. Pattern matching (rápido, sem custo, offline)
@@ -91,7 +91,7 @@ CUSTOMER_INTENTS = {
 # Padrões de intenção para ATENDENTES (uso interno)
 AGENT_INTENTS = {
     "search_info": {
-        "keywords": ["@guru", "buscar", "informação sobre", "consultar", "verificar"],
+        "keywords": ["guru", "buscar", "informação sobre", "consultar", "verificar"],
         "action": "query_bot"
     },
     "create_order": {
@@ -109,6 +109,10 @@ AGENT_INTENTS = {
     "escalate": {
         "keywords": ["escalar", "supervisor", "gerente", "urgente"],
         "action": "escalate"
+    },
+    "summary": {
+        "keywords": ["resumo", "resumir", "resuma", "sintetizar", "sintetize"],
+        "action": "generate_summary"
     },
 }
 
@@ -350,7 +354,7 @@ if __name__ == "__main__":
             ("Preciso agendar uma reunião para amanhã", "customer"),
             ("Meu código deu erro 500", "customer"),
             ("Quero falar com um humano", "customer"),
-            ("@guru qual a política de garantia?", "agent"),
+            ("guru qual a política de garantia?", "agent"),
         ]
         
         print(f"\n{'='*60}")

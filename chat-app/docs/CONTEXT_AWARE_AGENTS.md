@@ -9,7 +9,7 @@ Permitir que agentes IA (Guru, SDR, Advocatus, etc.) interpretem o **histórico 
 [Chat Principal - Conversa com Cliente]
 Cliente: Gostaria de saber mais sobre seus serviços
 
-[Agente @advogado aberto]
+[Agente 'advogado' aberto]
 Usuário: como responder para esse cliente?
 Dr. Advocatus: "Com base na conversa, sugiro: 'Olá! Ficamos felizes com seu 
 interesse. Oferecemos 3 planos: Basic, Pro e Enterprise. Qual se adequa melhor 
@@ -111,9 +111,8 @@ async def get_conversation_context(
             {"userId": user_id, "contactId": contact_id},
             {"userId": contact_id, "contactId": user_id}
         ],
-        "createdAt": {"$gte": time_threshold},
-        # Ignora mensagens de agentes (começam com @)
-        "text": {"$not": {"$regex": "^@"}}
+        "createdAt": {"$gte": time_threshold}
+        # OBS: Agora não ignoramos mensagens que comecem com '@' - todo o texto é considerado no contexto
     }
     
     cursor = messages_collection.find(query).sort("createdAt", 1).limit(limit)
@@ -549,7 +548,7 @@ Seja estratégico e focado em CONVERSÃO.
 **Teste 1: Agente sem contexto**
 ```
 1. Abrir chat sem selecionar contato
-2. Abrir agente @guru
+2. Abrir agente 'guru' (painel)
 3. Perguntar: "como responder?"
 4. ✅ Espera: Agente responde genericamente (sem contexto específico)
 ```
@@ -558,7 +557,7 @@ Seja estratégico e focado em CONVERSÃO.
 ```
 1. Abrir conversa com cliente "João"
 2. Trocar 5 mensagens
-3. Abrir agente @advogado
+3. Abrir agente 'advogado' (painel)
 4. Perguntar: "como responder para esse cliente?"
 5. ✅ Espera: Agente analisa histórico e sugere resposta específica
 ```
@@ -568,14 +567,14 @@ Seja estratégico e focado em CONVERSÃO.
 1. Conversar com "João" (5 mensagens)
 2. Conversar com "Maria" (3 mensagens)
 3. Voltar para "João"
-4. Abrir @sdr e perguntar: "qual o status?"
+4. Abrir o painel do SDR e perguntar: "qual o status?"
 5. ✅ Espera: Agente analisa conversa de João (não Maria)
 ```
 
 **Teste 4: Comandos específicos**
 ```
 1. Conversar com cliente
-2. Abrir @advogado
+2. Abrir painel do 'advogado'
 3. Testar comandos:
    - "gera resumo desta conversa"
    - "o que responder?"

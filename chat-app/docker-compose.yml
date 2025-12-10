@@ -118,28 +118,7 @@ services:
         condition: service_healthy
     volumes:
       - ./minio-init:/config
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set myminio http://minio:9000 MINIOADMIN MINIOADMIN &&
-      mc mb --ignore-existing myminio/chat-uploads &&
-      mc anonymous set download myminio/chat-uploads &&
-      echo '🌐 Configurando CORS...' &&
-      cat > /tmp/cors.json << 'EOF'
-      {
-        \"CORSRules\": [
-          {
-            \"AllowedOrigins\": [\"*\"],
-            \"AllowedMethods\": [\"GET\", \"PUT\", \"POST\", \"DELETE\", \"HEAD\"],
-            \"AllowedHeaders\": [\"*\"],
-            \"ExposeHeaders\": [\"ETag\"],
-            \"MaxAgeSeconds\": 3600
-          }
-        ]
-      }
-      EOF
-      mc anonymous set-json /tmp/cors.json myminio/chat-uploads 2>/dev/null || echo 'ℹ️ CORS via policy não suportado' &&
-      echo '✅ Bucket chat-uploads criado e configurado!'
-      "
+    entrypoint: ["/bin/sh", "/config/init-bucket.sh"]
     restart: on-failure
 
   # WhatsApp Selenium - QR Code via Screenshot do WhatsApp Web

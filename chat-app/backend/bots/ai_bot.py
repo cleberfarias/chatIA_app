@@ -163,7 +163,7 @@ def is_ai_question(text: str) -> bool:
     Verifica se a mensagem é uma pergunta para o Guru.
     
     Detecta padrões como:
-    - @guru <pergunta>
+    - guru <pergunta> (ou abra o painel do Guru)
     - guru, <pergunta>
     - Mensagens com "?" direcionadas ao guru
     
@@ -177,17 +177,14 @@ def is_ai_question(text: str) -> bool:
     
     # Padrões que indicam uma pergunta ao Guru (incluindo variações de pronúncia)
     triggers = [
-        text_lower.startswith("@guru"),
         text_lower.startswith("guru,"),
         text_lower.startswith("guru "),
         text_lower.startswith("hey guru"),
         text_lower.startswith("ei guru"),
         text_lower.startswith("oi guru"),
         # Variações de pronúncia (áudio pode não transcrever perfeitamente)
-        text_lower.startswith("@gugu"),
         text_lower.startswith("gugu"),
-        # Mantém compatibilidade com @bot (legado)
-        text_lower.startswith("@bot"),
+        # Mantém compatibilidade com 'bot' como fallback
         text_lower.startswith("bot,"),
         text_lower.startswith("bot "),
     ]
@@ -209,10 +206,10 @@ def clean_bot_mention(text: str) -> str:
     
     # Remove prefixos comuns (incluindo variações de transcrição)
     prefixes = [
-        "@guru", "guru,", "hey guru", "ei guru", "oi guru", "guru",
-        "@gugu", "gugu,", "gugu",
-        # Mantém compatibilidade com @bot (legado)
-        "@bot", "bot,", "hey bot", "ei bot", "oi bot", "bot",
+        "guru,", "hey guru", "ei guru", "oi guru", "guru",
+        "gugu,", "gugu",
+        # Mantém compatibilidade com 'bot' (legado)
+        "bot,", "hey bot", "ei bot", "oi bot", "bot",
     ]
     
     for prefix in prefixes:

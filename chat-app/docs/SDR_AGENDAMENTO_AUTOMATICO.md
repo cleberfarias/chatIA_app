@@ -11,7 +11,7 @@ O agente SDR agora **realmente agenda reuniões** no Google Calendar e envia con
 Você conversa normalmente com o SDR e fornece as informações necessárias:
 
 ```
-Você: @sdr Quero agendar uma demo do produto
+Você (no painel SDR): Quero agendar uma demo do produto
 
 SDR: Olá! Para agendar, preciso de algumas informações...
 
@@ -67,14 +67,14 @@ Para o agendamento funcionar, o sistema precisa detectar:
 ### Exemplo 1: Tudo em Uma Mensagem
 
 ```
-@sdr Quero agendar demo, meu email é joao@empresa.com, 
+No painel SDR: Quero agendar demo, meu email é joao@empresa.com, 
 telefone (11) 98765-4321, pode ser amanhã às 10h?
 ```
 
 ### Exemplo 2: Conversa Fragmentada
 
 ```
-Você: @sdr preciso marcar reunião
+Você (no painel SDR): preciso marcar reunião
 SDR: Claro! Me passa seu email?
 Você: contato@empresa.com.br
 SDR: E qual seria o melhor dia e horário?
@@ -86,7 +86,7 @@ SDR: Perfeito! Vou agendar...
 ### Exemplo 3: Usando Linguagem Natural
 
 ```
-Você: @sdr Quero uma demo depois de amanhã de manhã
+Você (no painel SDR): Quero uma demo depois de amanhã de manhã
 SDR: Que horário prefere?
 Você: 9h da manhã tá bom
 SDR: E qual seu email para enviar o convite?
@@ -225,9 +225,8 @@ Tente formatos mais explícitos:
 
 ## 📝 Exemplo Completo
 
-```
-[16:20] Você: @sdr oi
-[16:20] SDR: Olá! Eu sou o sdr. Como posso ajudá-lo?
+[16:20] Você: (Abra o painel do SDR) oi
+[16:20] SDR: Olá! Eu sou o SDR. Como posso ajudá-lo?
 
 [16:21] Você: Quero agendar uma demo do produto
 [16:21] SDR: Fico feliz em ajudar! Para agendar, preciso de:

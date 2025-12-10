@@ -105,7 +105,7 @@
         v-model="text"
         :uploading="uploadingFile"
         :upload-progress="uploadProgress"
-        @submit="(msg) => { console.log('📤 DSChatInput @submit:', msg); handleSendMessage(msg); }"
+        @submit="(msg: string) => { console.log('📤 DSChatInput @submit:', msg); handleSendMessage(msg); }"
         @typing="handleTyping"
         @emoji="() => {}"
         @voice="showVoiceRecorder = true"
@@ -184,7 +184,7 @@
       :title="panel.title"
       :emoji="panel.emoji"
       :stack-index="index"
-      :contact-id="chatStore.currentContactId || undefined"
+      :contact-id="props.contact?.id || chatStore.currentContactId || undefined"
       @close="closeAgentPanel(panel.key)"
       @minimize="minimizeAgentPanel(panel.key)"
     />
@@ -328,30 +328,8 @@ const unreadCount = computed(() => {
 });
 
 // 🧠 Watch para detectar sessão ativa com Guru
-watch(() => chatStore.messages, (messages) => {
-  if (!messages || messages.length === 0) return;
-  
-  // Pega última mensagem
-  const lastMessage = messages[messages.length - 1];
-  if (!lastMessage?.author?.includes('Guru')) return;
-  
-  // Verifica se é mensagem de despedida (prioridade)
-  const sessionEnded = lastMessage.text?.includes('👋 Até logo');
-  
-  // Verifica se é mensagem de boas-vindas
-  const sessionStarted = lastMessage.text?.includes('pode falar direto comigo') || 
-    lastMessage.text?.includes('sem mencionar @guru');
-  
-  if (sessionEnded) {
-    console.log('🚪 Sessão do Guru encerrada');
-    guruSessionActive.value = false;
-    localStorage.removeItem('guruSessionActive');
-  } else if (sessionStarted) {
-    console.log('🎉 Sessão do Guru iniciada');
-    guruSessionActive.value = true;
-    localStorage.setItem('guruSessionActive', 'true');
-  }
-}, { deep: true });
+// Sessions for agents (e.g., Guru) are controlled via agent panel events (agent:open/agent:close).
+// Remove legacy detection via message content.
 
 // Conecta ao socket e carrega histórico ao montar
 onMounted(async () => {
@@ -398,6 +376,23 @@ onMounted(async () => {
     
     scrollToBottom();
     console.log('✅ Socket conectado e mensagens carregadas para contato:', props.contact?.name);
+    // Registra listeners para eventos de painel de agente (ex.: Guru)
+    if (chatStore.socket) {
+      chatStore.socket.on('agent:opened', (data: any) => {
+        if (data?.agentKey?.toLowerCase?.() === 'guru') {
+          console.log('🎉 Sessão do Guru iniciada (evento agent:opened)');
+          guruSessionActive.value = true;
+          localStorage.setItem('guruSessionActive', 'true');
+        }
+      });
+      chatStore.socket.on('agent:closed', (data: any) => {
+        if (data?.agentKey?.toLowerCase?.() === 'guru') {
+          console.log('🚪 Sessão do Guru encerrada (evento agent:closed)');
+          guruSessionActive.value = false;
+          localStorage.removeItem('guruSessionActive');
+        }
+      });
+    }
   } catch (error) {
     console.error('❌ Erro ao conectar socket:', error);
     // Se falhar autenticação, redireciona para login
@@ -487,9 +482,11 @@ function handleSendMessage(messageText: string) {
 
 // 🧠 FUNÇÃO: Insere comando do Guru no input e envia automaticamente
 function insertCommand(command: string) {
-  // Se for menção de agente (começa com @), abre painel lateral SEM enviar ao chat
-  if (command.startsWith('@')) {
-    const agentKey = command.replace('@', '').trim().split(' ')[0];
+  // Se for comando de agente (com ou sem @), abre painel lateral SEM enviar ao chat
+  const maybeAgentCmd = command.trim();
+  const agentKeyCandidate = maybeAgentCmd.startsWith('@') ? maybeAgentCmd.replace('@', '').trim().split(' ')[0] : maybeAgentCmd.split(' ')[0];
+  if (agentKeyCandidate && ['advogado','vendedor','medico','psicologo','sdr','guru'].includes(agentKeyCandidate.toLowerCase())) {
+    const agentKey = agentKeyCandidate;
     console.log('🔍 insertCommand:', command, '→ agentKey:', agentKey);
     
     if (!agentKey) {
@@ -545,6 +542,11 @@ function openAgentPanel(key: string, title: string, emoji?: string) {
     console.log('➕ Criando novo painel para o contato:', key, contactId);
     // Se não existe, adiciona novo painel
     agentPanelsByContact.value[contactId].push({ key, title, emoji, minimized: false });
+
+    // Notifica o backend que o painel do agente foi aberto (ex.: ativa sessão do Guru)
+    if (chatStore.socket) {
+      chatStore.socket.emit('agent:open', { agentKey: key, contactId });
+    }
   }
   
   console.log('📋 Estado dos painéis deste contato:', agentPanelsByContact.value[contactId]);
@@ -560,6 +562,11 @@ function closeAgentPanel(key: string) {
   
   console.log('❌ Fechando painel:', key, 'do contato:', contactId);
   agentPanelsByContact.value[contactId] = agentPanelsByContact.value[contactId].filter(p => p.key !== key);
+
+  // Notifica o backend que o painel do agente foi fechado
+  if (chatStore.socket) {
+    chatStore.socket.emit('agent:close', { agentKey: key, contactId });
+  }
 }
 
 function minimizeAgentPanel(key: string) {

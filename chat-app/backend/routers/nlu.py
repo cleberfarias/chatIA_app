@@ -11,6 +11,7 @@ from datetime import datetime
 
 from bots.nlu import detect_intent, requires_human_handover, suggest_response_template
 from bots.entities import extract_entities
+import dataclasses
 from database import interactions_collection
 from deps import get_current_user_id
 
@@ -69,14 +70,14 @@ async def analyze_text(
             "question": request.text,
             "intent": intent.name,
             "intent_confidence": intent.confidence,
-            "entities": {k: v.dict() for k, v in entities.items()},
+            "entities": {k: dataclasses.asdict(v) for k, v in entities.items()},
             "timestamp": datetime.utcnow()
         })
         
         return AnalyzeResponse(
             intent=intent.name,
             confidence=intent.confidence,
-            entities={k: v.dict() for k, v in entities.items()},
+            entities={k: dataclasses.asdict(v) for k, v in entities.items()},
             requires_handover=needs_handover,
             suggested_response=suggested
         )
@@ -134,3 +135,23 @@ async def extract_entities_endpoint(request: AnalyzeRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao extrair entidades: {str(e)}")
+
+
+@router.get("/health")
+async def nlu_health():
+    """
+    Retorna informações de status/configuração do NLU e integrações relacionadas (sem sensíveis).
+    """
+    try:
+        from bots.nlu import USE_GPT_NLU, OPENAI_API_KEY, OPENAI_MODEL
+        from integrations.google_calendar import GoogleCalendarService
+        calendar_service = GoogleCalendarService()
+        google_ok = calendar_service.authenticate()
+        return {
+            "use_gpt_nlu": bool(USE_GPT_NLU),
+            "openai_configured": bool(OPENAI_API_KEY),
+            "openai_model": OPENAI_MODEL,
+            "google_calendar_authenticated": bool(google_ok)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao verificar health: {str(e)}")
