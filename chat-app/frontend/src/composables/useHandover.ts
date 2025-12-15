@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { useAuthStore } from '@/stores/auth'
 
 export interface HandoverData {
   customer_id: string
@@ -21,7 +22,7 @@ export function useHandover() {
     error.value = null
 
     try {
-      const token = localStorage.getItem('token')
+      const token = useAuthStore().token
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/handovers/`,
         data,
@@ -47,7 +48,7 @@ export function useHandover() {
     error.value = null
 
     try {
-      const token = localStorage.getItem('token')
+      const token = useAuthStore().token
       const response = await axios.get(
         `${import.meta.env.VITE_API_URL}/handovers/`,
         {
@@ -70,7 +71,7 @@ export function useHandover() {
     error.value = null
 
     try {
-      const token = localStorage.getItem('token')
+      const token = useAuthStore().token
       await axios.put(
         `${import.meta.env.VITE_API_URL}/handovers/${handoverId}/accept`,
         { agent_id: agentId, agent_name: agentName },
@@ -89,7 +90,7 @@ export function useHandover() {
     error.value = null
 
     try {
-      const token = localStorage.getItem('token')
+      const token = useAuthStore().token
       await axios.put(
         `${import.meta.env.VITE_API_URL}/handovers/${handoverId}/resolve`,
         { resolution_notes: notes },

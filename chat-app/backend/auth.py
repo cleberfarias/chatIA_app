@@ -40,8 +40,9 @@ def decode_token(token: str) -> dict:
 
 def get_user_id_from_token(token: str) -> str:
     """Extrai o userId (sub) do token JWT"""
-    try:
-        payload = decode_token(token)
-        return payload.get("sub")
-    except Exception:
-        return None
+    # decode_token já levanta ValueError com motivo (ex: token inválido/expirado)
+    payload = decode_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise ValueError("Token inválido: 'sub' ausente")
+    return user_id

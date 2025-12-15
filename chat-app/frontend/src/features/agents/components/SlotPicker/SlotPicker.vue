@@ -78,10 +78,12 @@ async function selectDate(date: Date) {
 }
 
 // Busca slots disponíveis para a data selecionada
+import { useAuthStore } from '@/stores/auth'
+
 async function loadAvailableSlots() {
   loading.value = true
   try {
-    const token = localStorage.getItem('token')
+    const token = useAuthStore().token
     const dateStr = formatDateForAPI(selectedDate.value)
     
     const url = new URL(`${apiBaseUrl}/calendar/available-slots`)
