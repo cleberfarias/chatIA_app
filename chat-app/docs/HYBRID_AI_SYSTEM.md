@@ -133,7 +133,7 @@ pip install -r requirements.txt
 2. Clique em "Create Credentials" → "OAuth client ID"
 3. Configure a tela de consentimento:
    - User Type: "External"
-   - App name: "Chat App SDR"
+  - App name: "Chat-IA SDR"
    - Add test users (seu email)
 4. Application type: "Desktop app"
 5. Download do arquivo `credentials.json`

@@ -19,7 +19,7 @@
                 <v-avatar size="80" color="primary" class="mb-4">
                   <v-icon size="50" color="white">mdi-chat</v-icon>
                 </v-avatar>
-                <div class="text-h4 font-weight-bold">Chat App</div>
+                <div class="text-h4 font-weight-bold">Chat-IA</div>
                 <div class="text-subtitle-1 text-grey">
                   Conecte-se em tempo real
                 </div>
@@ -179,7 +179,7 @@
             <!-- FOOTER -->
             <v-card-actions class="pa-4 justify-center">
               <div class="text-caption text-grey">
-                © 2025 Chat App - Projeto de Estudo
+                © 2025 Pad Chat-IA - Pad Chat-IA
               </div>
             </v-card-actions>
           </v-card>

@@ -1,4 +1,4 @@
-# 💬 Chat App — Aplicação de Chat em Tempo Real (Vue 3 + FastAPI)
+# 💬Chat-IA — Aplicação de Chat em Tempo Real (Vue 3 + FastAPI)
 
 [![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -81,8 +81,8 @@ Benefícios para desenvolvedores e equipes:
 
 ```bash
 # 1. Clone
-git clone https://github.com/cleberfarias/projeto_estudo.git
-cd projeto_estudo/chat-app
+git clone https://github.com/cleberfarias/chatIA_app
+cd pad-chat-ia/chat-app
 
 # 2. Suba os serviços
 docker compose up -d --build
@@ -201,8 +201,8 @@ flowchart TB
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/cleberfarias/projeto_estudo.git
-cd projeto_estudo/chat-app
+git clone https://github.com/cleberfarias/chatIA_app
+cd pad-chat-ia/chat-app
 
 # 2. Inicie os containers
 docker-compose up

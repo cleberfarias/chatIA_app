@@ -1,4 +1,4 @@
-# Design System - Chat App
+# Design System - Chat-IA
 
 ## 📐 Arquitetura
 

@@ -28,7 +28,7 @@ cleber.fdelgado@gmail.com
 Após adicionar o usuário de teste, execute:
 
 ```bash
-cd /home/cleber_delgado/workspace/projeto_estudo/chat-app
+cd /home/cleber_delgado/workspace/chat-ia/chat-app
 
 # Gerar nova URL de autorização
 docker compose exec api python3 -c "

@@ -6,7 +6,7 @@ YELLOW := \033[0;33m
 RESET  := \033[0m
 
 help: ## Mostra este menu de ajuda
-	@echo "$(GREEN)Chat App - Comandos Disponíveis$(RESET)"
+	@echo "$(GREEN)Pad Chat-IA - Comandos Disponíveis$(RESET)"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(RESET) %s\n", $$1, $$2}'
 	@echo ""

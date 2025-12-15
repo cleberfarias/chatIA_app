@@ -1,4 +1,4 @@
-# 🎬 Script para Vídeo - Chat App
+# 🎬 Script para Vídeo -Chat-IA
 
 ## 📋 Introdução (30 segundos)
 
@@ -346,7 +346,7 @@ A separação em 3 camadas garante:
 
 ## 🔗 Links Úteis
 
-- **Repositório:** github.com/cleberfarias/projeto_estudo
+- **Repositório:** (https://github.com/cleberfarias/chatIA_app)
 - **Documentação completa:** `docs/`
 - **Arquitetura detalhada:** `arquitetura.md`
 - **Sistema de IA:** `docs/HYBRID_AI_SYSTEM.md`

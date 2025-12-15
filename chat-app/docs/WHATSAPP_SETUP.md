@@ -6,7 +6,7 @@
 2. Clique em **"Criar App"**
 3. Selecione **"Business"** como tipo
 4. Preencha:
-   - Nome do app: `Chat App WhatsApp`
+   - Nome do app: `Chat-IA WhatsApp`
    - Email de contato: seu email
    - Business Account: Selecione ou crie uma
 
@@ -51,7 +51,7 @@ Content-Type: application/json
 {
   "channel": "whatsapp",
   "recipient": "5511999999999",
-  "text": "Olá do Chat App!"
+   "text": "Olá do Pad Chat-IA!"
 }
 ```
 

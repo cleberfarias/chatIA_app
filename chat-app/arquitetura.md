@@ -1,4 +1,4 @@
-# 🏗️ Arquitetura do Sistema - Chat App
+# 🏗️ Arquitetura do Sistema -Chat-IA
 
 ## 📋 Visão Geral
 

@@ -58,7 +58,7 @@ def setup_google_calendar():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🗓️  Configuração Google Calendar - Chat App")
+    print("🗓️  Configuração Google Calendar -Chat-IA")
     print("=" * 60)
     print()
     
