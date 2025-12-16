@@ -20,7 +20,7 @@ class CustomBotCreate(BaseModel):
 @router.post("")
 async def create_custom_bot(body: CustomBotCreate, current_user_id: str = Depends(get_current_user_id)):
     from bots.agents import create_custom_agent
-    agent = create_custom_agent(
+    agent = await create_custom_agent(
         user_id=current_user_id,
         name=body.name,
         emoji=body.emoji,
@@ -44,7 +44,7 @@ async def create_custom_bot(body: CustomBotCreate, current_user_id: str = Depend
 @router.get("")
 async def list_custom_bots(current_user_id: str = Depends(get_current_user_id)):
     from bots.agents import list_custom_agents
-    agents = list_custom_agents(current_user_id)
+    agents = await list_custom_agents(current_user_id)
     return {
         "bots": [
             {
@@ -61,7 +61,7 @@ async def list_custom_bots(current_user_id: str = Depends(get_current_user_id)):
 @router.delete("/{bot_key}")
 async def delete_custom_bot(bot_key: str, current_user_id: str = Depends(get_current_user_id)):
     from bots.agents import delete_custom_agent
-    success = delete_custom_agent(current_user_id, bot_key)
+    success = await delete_custom_agent(current_user_id, bot_key)
     if not success:
         raise HTTPException(status_code=404, detail="Bot não encontrado")
     return {"success": True, "message": "Bot deletado com sucesso"}

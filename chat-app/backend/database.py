@@ -20,6 +20,8 @@ handovers_collection = db.handovers
 # 📅 Collection para eventos do calendário
 calendar_events_collection = db.calendar_events
 
+# 🤖 Collection para bots customizados por usuário
+custom_bots_collection = db.custom_bots
 
 # Criar índices para otimizar consultas
 async def create_indexes():
@@ -41,3 +43,10 @@ async def create_indexes():
     await calendar_events_collection.create_index([("agent_id", 1)])
     await calendar_events_collection.create_index([("status", 1)])
     await calendar_events_collection.create_index([("google_event_id", 1)], unique=True)
+
+    # Índice para bots customizados (um bot por chave/usuário)
+    await custom_bots_collection.create_index(
+        [("user_id", 1), ("bot_key", 1)],
+        unique=True,
+        name="user_bot_unique"
+    )

@@ -7,8 +7,11 @@ Uso: via Agent Panels (ex.: advogado, vendedor, guru). Inline @agent usages are 
 import os
 from typing import Optional, List, Dict, Any
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 import httpx
 from dotenv import load_dotenv
+
+from database import custom_bots_collection
 
 load_dotenv()
 
@@ -537,7 +540,73 @@ AGENTS_REGISTRY: dict[str, Agent] = {
 custom_bots_registry: dict[str, dict[str, Agent]] = {}
 
 
-def create_custom_agent(
+async def load_custom_agents_from_db() -> None:
+    """
+    Carrega todos os bots customizados do MongoDB para o registry em memória.
+    Mantém compatibilidade com lookup síncrono nos handlers de socket.
+    """
+    docs = await custom_bots_collection.find().to_list(length=None)
+    for doc in docs:
+        user_id = doc.get("user_id")
+        bot_key = doc.get("bot_key") or doc.get("name", "").lower().replace(" ", "")
+        if not user_id or not bot_key:
+            continue
+        agent = Agent(
+            name=doc.get("name", "Bot"),
+            emoji=doc.get("emoji", "🤖"),
+            system_prompt=doc.get("system_prompt", ""),
+            specialties=doc.get("specialties", []),
+            commands=doc.get("commands", {
+                "/ajuda": "Lista comandos",
+                "/limpar": "Limpar histórico",
+                "/contexto": "Ver status da conversa"
+            }),
+            openai_api_key=doc.get("openai_api_key"),
+            openai_account=doc.get("openai_account"),
+        )
+        if doc.get("allow_calendar_creation"):
+            agent.allow_calendar_creation = True
+        if doc.get("allow_calendar_auto_create"):
+            agent.allow_calendar_auto_create = True
+
+        if user_id not in custom_bots_registry:
+            custom_bots_registry[user_id] = {}
+        custom_bots_registry[user_id][bot_key] = agent
+    if docs:
+        print(f"✅ Bots customizados carregados: {len(docs)}")
+
+
+async def ensure_user_custom_bots(user_id: str) -> None:
+    """Garante que os bots de um usuário estão no registry (carrega do DB se necessário)."""
+    if user_id in custom_bots_registry:
+        return
+    docs = await custom_bots_collection.find({"user_id": user_id}).to_list(length=None)
+    if not docs:
+        custom_bots_registry[user_id] = {}
+        return
+    for doc in docs:
+        bot_key = doc.get("bot_key") or doc.get("name", "").lower().replace(" ", "")
+        agent = Agent(
+            name=doc.get("name", "Bot"),
+            emoji=doc.get("emoji", "🤖"),
+            system_prompt=doc.get("system_prompt", ""),
+            specialties=doc.get("specialties", []),
+            commands=doc.get("commands", {
+                "/ajuda": "Lista comandos",
+                "/limpar": "Limpar histórico",
+                "/contexto": "Ver status da conversa"
+            }),
+            openai_api_key=doc.get("openai_api_key"),
+            openai_account=doc.get("openai_account"),
+        )
+        if doc.get("allow_calendar_creation"):
+            agent.allow_calendar_creation = True
+        if doc.get("allow_calendar_auto_create"):
+            agent.allow_calendar_auto_create = True
+        custom_bots_registry.setdefault(user_id, {})[bot_key] = agent
+
+
+async def create_custom_agent(
     user_id: str,
     name: str,
     emoji: str,
@@ -585,12 +654,33 @@ def create_custom_agent(
     
     bot_key = name.lower().replace(' ', '')
     custom_bots_registry[user_id][bot_key] = agent
+
+    # Persiste no MongoDB
+    await custom_bots_collection.update_one(
+        {"user_id": user_id, "bot_key": bot_key},
+        {
+            "$set": {
+                "name": name,
+                "emoji": emoji,
+                "system_prompt": system_prompt,
+                "specialties": specialties,
+                "commands": commands,
+                "openai_api_key": openai_api_key,
+                "openai_account": openai_account,
+                "allow_calendar_creation": agent.allow_calendar_creation,
+                "allow_calendar_auto_create": agent.allow_calendar_auto_create,
+                "updated_at": datetime.now(timezone.utc)
+            },
+            "$setOnInsert": {"created_at": datetime.now(timezone.utc)}
+        },
+        upsert=True
+    )
     
     print(f"✅ Bot personalizado criado: {name} {emoji} (user: {user_id})")
     return agent
 
 
-def get_custom_agent(user_id: str, agent_name: str) -> Optional[Agent]:
+async def get_custom_agent(user_id: str, agent_name: str) -> Optional[Agent]:
     """
     Retorna bot personalizado do usuário.
     
@@ -601,14 +691,12 @@ def get_custom_agent(user_id: str, agent_name: str) -> Optional[Agent]:
     Returns:
         Instância do bot ou None
     """
-    if user_id not in custom_bots_registry:
-        return None
-    
+    await ensure_user_custom_bots(user_id)
     bot_key = agent_name.lower().replace(' ', '')
     return custom_bots_registry[user_id].get(bot_key)
 
 
-def list_custom_agents(user_id: str) -> list[Agent]:
+async def list_custom_agents(user_id: str) -> list[Agent]:
     """
     Lista todos os bots personalizados do usuário.
     
@@ -618,13 +706,11 @@ def list_custom_agents(user_id: str) -> list[Agent]:
     Returns:
         Lista de agentes personalizados
     """
-    if user_id not in custom_bots_registry:
-        return []
-    
+    await ensure_user_custom_bots(user_id)
     return list(custom_bots_registry[user_id].values())
 
 
-def delete_custom_agent(user_id: str, agent_name: str) -> bool:
+async def delete_custom_agent(user_id: str, agent_name: str) -> bool:
     """
     Deleta bot personalizado.
     
@@ -635,12 +721,12 @@ def delete_custom_agent(user_id: str, agent_name: str) -> bool:
     Returns:
         True se deletado com sucesso
     """
-    if user_id not in custom_bots_registry:
-        return False
+    await ensure_user_custom_bots(user_id)
     
     bot_key = agent_name.lower().replace(' ', '')
     if bot_key in custom_bots_registry[user_id]:
         del custom_bots_registry[user_id][bot_key]
+        await custom_bots_collection.delete_one({"user_id": user_id, "bot_key": bot_key})
         print(f"🗑️ Bot personalizado deletado: {agent_name} (user: {user_id})")
         return True
     
@@ -651,7 +737,7 @@ def delete_custom_agent(user_id: str, agent_name: str) -> bool:
 # FUNÇÕES AUXILIARES
 # =====================================================
 
-def get_agent(agent_name: str, user_id: str = None) -> Optional[Agent]:
+async def get_agent(agent_name: str, user_id: str = None) -> Optional[Agent]:
     """
     Retorna agente pelo nome (global ou personalizado).
     
@@ -664,7 +750,7 @@ def get_agent(agent_name: str, user_id: str = None) -> Optional[Agent]:
     """
     # Primeiro tenta bot personalizado do usuário
     if user_id:
-        custom_agent = get_custom_agent(user_id, agent_name)
+        custom_agent = await get_custom_agent(user_id, agent_name)
         if custom_agent:
             return custom_agent
     

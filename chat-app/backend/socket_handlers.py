@@ -10,14 +10,11 @@ from fastapi import HTTPException
 from database import messages_collection, db
 from models import MessageCreate
 from storage import presign_get
-from bots.core import is_command, run_command
 from bots.automations import start_scheduler, load_and_schedule_all, handle_keyword_if_matches
-from bots.ai_bot import ask_chatgpt, is_ai_question, clean_bot_mention, clear_conversation, get_conversation_count
+from bots.ai_bot import ask_chatgpt, is_ai_question, clean_bot_mention
 from bots.agents import (
     get_agent,
     clean_agent_mention,
-    handle_agent_command,
-    list_all_agents,
     generate_agent_suggestions
 )
 from transcription import transcribe_from_s3
@@ -66,7 +63,7 @@ async def process_agent_message(sid, data):
         return
     
     from bots.agents import get_agent
-    agent = get_agent(agent_key, user_id)
+    agent = await get_agent(agent_key, user_id)
     
     if not agent:
         await sio.emit("agent:error", {"error": f"Agente '{agent_key}' não encontrado"}, to=sid)
@@ -291,91 +288,6 @@ def register_socket_handlers():
             text = data.get("text", "").strip()
             contact_id = data.get("contactId")
 
-            # Comandos
-            if is_command(text):
-                from bots.automations import publish_message
-                from bots.ai_bot import set_user_mode, get_user_mode, generate_conversation_summary
-
-                lower = text.lower()
-                if lower in ["/ajuda", "/help"]:
-                    help_text = """🧠 **Comandos do Guru:**
-
-📝 **Conversa:**
-• Abra o painel do Guru para iniciar uma sessão interativa
-• `tchau` ou `sair` - Encerrar sessão (se aberta)
-• `/ai <pergunta>` - Pergunta direta ao Guru (sem abrir painel)
-
-🎨 **Personalização:**
-• `/modo <casual|profissional|tecnico>` - Mudar estilo
-• `/contexto` - Ver histórico de mensagens
-
-🛠️ **Utilitários:**
-• `/limpar` - Limpar histórico
-• `/resumo` - Resumo da conversa
-• `/ajuda` - Esta mensagem
-
-🤖 **Agentes Especializados:**
-• `/agentes` - Ver todos os agentes disponíveis
-• Use os painéis de agente para conversar com especialistas (Advogado, Vendedor, Médico, Psicólogo)"""
-                    await publish_message(sio.emit, author="Guru 📚", text=help_text, user_id=user_id, target_sid=sid)
-                    return
-                if lower in ["/agentes", "/agents"]:
-                    agents_list = list_all_agents()
-                    await publish_message(sio.emit, author="Sistema 🤖", text=agents_list, user_id=user_id, target_sid=sid)
-                    return
-                if lower == "/contexto":
-                    count = get_conversation_count(user_id)
-                    mode = get_user_mode(user_id)
-                    mode_emoji = {"casual": "😎", "profissional": "💼", "tecnico": "🔧"}
-                    context_text = f"""📊 **Status da Conversa:**
-
-💬 Mensagens no histórico: {count}/10
-🎭 Modo atual: {mode.title()} {mode_emoji.get(mode, '')}
-🧠 Memória: {'Ativa' if count > 0 else 'Vazia'}
-
-_Quanto mais conversamos, melhor eu te entendo!_ ✨"""
-                    await publish_message(sio.emit, author="Guru 📊", text=context_text, user_id=user_id, target_sid=sid)
-                    return
-                if lower.startswith("/modo "):
-                    new_mode = text[6:].strip().lower()
-                    result = set_user_mode(user_id, new_mode)
-                    await publish_message(sio.emit, author="Guru 🎭", text=result, user_id=user_id, target_sid=sid)
-                    return
-                if lower in ["/resumo", "/rusumo"]:
-                    summary = generate_conversation_summary(user_id)
-                    await publish_message(sio.emit, author="Guru 📝", text=summary, user_id=user_id, target_sid=sid)
-                    return
-                if lower in ["/limpar", "/clear"]:
-                    clear_conversation(user_id)
-                    count = get_conversation_count(user_id)
-                    await publish_message(
-                        sio.emit,
-                        author="Guru 🧹",
-                        text=f"✅ Histórico de conversa limpo! ({count} mensagens removidas)\nPodemos começar uma nova conversa do zero.",
-                        user_id=user_id,
-                        target_sid=sid
-                    )
-                    return
-                if lower.startswith("/ai "):
-                    question = text[4:].strip()
-                    if question:
-                        await sio.emit("chat:typing", {"author": "Guru", "isTyping": True}, room=sid)
-                        await asyncio.sleep(0.8)
-                        ai_response = await ask_chatgpt(question, user_id, author)
-                        typing_time = len(ai_response) / 50
-                        typing_time = max(1.0, min(typing_time, 4.0))
-                        await asyncio.sleep(typing_time)
-                        await sio.emit("chat:typing", {"author": "Guru", "isTyping": False}, room=sid)
-                        await publish_message(sio.emit, author="Guru 🧠", text=ai_response, user_id=user_id, target_sid=sid)
-                    else:
-                        await publish_message(sio.emit, author="Guru", text="💭 Use: /ai <sua pergunta>", user_id=user_id, target_sid=sid)
-                    return
-                reply = run_command(text)
-                if reply:
-                    from bots.automations import publish_message
-                    await publish_message(sio.emit, author="Guru", text=reply, user_id=user_id, target_sid=sid)
-                return
-
             # NOTE: Agent mentions removed from chat input processing.
             # Agents should be invoked only via the Agent Panel (agent:send) or via the frontend UI.
 
@@ -525,7 +437,7 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
                 return
 
             from bots.agents import get_agent, generate_conversation_summary
-            agent = get_agent(agent_key, user_id)
+            agent = await get_agent(agent_key, user_id)
             if not agent:
                 await sio.emit("agent:error", {"error": "Agente não encontrado"}, to=sid)
                 return
@@ -585,7 +497,7 @@ _Quanto mais conversamos, melhor eu te entendo!_ ✨"""
                 return
 
             from bots.agents import get_agent, sdr_schedule_event
-            agent = get_agent(agent_key, user_id)
+            agent = await get_agent(agent_key, user_id)
             if not agent:
                 await sio.emit("agent:error", {"error": "Agente não encontrado"}, to=sid)
                 return

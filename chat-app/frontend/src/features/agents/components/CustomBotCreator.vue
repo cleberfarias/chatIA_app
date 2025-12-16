@@ -1,19 +1,19 @@
 <template>
   <v-dialog v-model="dialog" max-width="700px" persistent scrollable>
     <v-card>
-      <v-card-title class="bg-gradient-custom text-white">
+          <v-card-title class="bg-gradient-custom text-white">
         <div class="d-flex align-center">
           <v-icon class="mr-2">mdi-robot-excited</v-icon>
-          <span>Criar Bot Personalizado</span>
+          <span>Criar Agente Personalizado</span>
         </div>
       </v-card-title>
 
       <v-card-text class="pt-6 pb-4">
         <v-form ref="formRef" v-model="formValid">
-          <!-- Nome do Bot -->
+          <!-- Nome do Agente -->
           <v-text-field
             v-model="botName"
-            label="Nome do Bot *"
+            label="Nome do Agente *"
             placeholder="Ex: Assistente de Vendas, Tutor de Matemática..."
             prepend-inner-icon="mdi-robot"
             variant="outlined"
@@ -23,7 +23,7 @@
             class="mb-4"
           />
 
-          <!-- Emoji do Bot -->
+          <!-- Emoji do Agente -->
           <v-text-field
             v-model="botEmoji"
             label="Emoji (opcional)"
@@ -31,7 +31,7 @@
             prepend-inner-icon="mdi-emoticon-happy"
             variant="outlined"
             :rules="[rules.maxLength]"
-            hint="Um emoji que representa seu bot"
+            hint="Um emoji que representa seu agente"
             persistent-hint
             class="mb-4"
             maxlength="4"
@@ -106,7 +106,7 @@ COMPORTAMENTO:
                 variant="outlined"
                 :rules="[rules.required]"
                 rows="12"
-                hint="Descreva a personalidade, expertise e comportamento do bot"
+                hint="Descreva a personalidade, expertise e comportamento do agente"
                 persistent-hint
                 auto-grow
                 counter
@@ -133,7 +133,7 @@ COMPORTAMENTO:
               <v-card v-if="fileContent" variant="outlined" class="mt-4">
                 <v-card-subtitle class="d-flex align-center">
                   <v-icon size="small" class="mr-2">mdi-eye</v-icon>
-                  Preview do Arquivo
+                    Preview do Arquivo
                 </v-card-subtitle>
                 <v-card-text>
                   <pre class="file-preview">{{ fileContent }}</pre>
@@ -163,11 +163,11 @@ COMPORTAMENTO:
             </template>
           </v-combobox>
 
-          <!-- Preview do Bot -->
+          <!-- Preview do Agente -->
           <v-card v-if="botName || botEmoji" variant="tonal" class="mt-6">
             <v-card-subtitle class="d-flex align-center">
               <v-icon size="small" class="mr-2">mdi-robot-happy</v-icon>
-              Preview do Bot
+              Preview do Agente
             </v-card-subtitle>
             <v-card-text>
               <div class="d-flex align-center">
@@ -176,7 +176,7 @@ COMPORTAMENTO:
                 </v-avatar>
                 <div>
                   <div class="text-subtitle-1 font-weight-bold">
-                    {{ botName || 'Meu Bot' }} {{ botEmoji }}
+                    {{ botName || 'Meu Agente' }} {{ botEmoji }}
                   </div>
                   <div v-if="botSpecialties.length" class="text-caption text-grey">
                     {{ botSpecialties.slice(0, 3).join(' • ') }}
@@ -202,11 +202,11 @@ COMPORTAMENTO:
           color="primary"
           variant="flat"
           :disabled="!canCreate"
-          :loading="creating"
+          :loading="loading"
           @click="createBot"
         >
           <v-icon class="mr-2">mdi-plus-circle</v-icon>
-          Criar Bot
+          Criar Agente
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -215,6 +215,7 @@ COMPORTAMENTO:
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useCustomAgents, type CustomAgentPayload, type CustomAgentSummary } from '../../../composables/useCustomAgents';
 
 // Props
 const props = defineProps<{
@@ -224,19 +225,10 @@ const props = defineProps<{
 // Emits
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
-  'bot-created': [bot: CustomBot];
+  'agent-created': [agent: CustomAgentSummary];
 }>();
 
-// Types
-interface CustomBot {
-  name: string;
-  emoji: string;
-  prompt: string;
-  specialties: string[];
-  openaiApiKey: string;
-  openaiAccount?: string;
-  createdAt: number;
-}
+// Types are provided by the composable: CustomAgentPayload / CustomAgentSummary
 
 // Dialog state
 const dialog = computed({
@@ -247,7 +239,6 @@ const dialog = computed({
 // Form
 const formRef = ref();
 const formValid = ref(false);
-const creating = ref(false);
 
 // Bot data
 const botName = ref('');
@@ -260,6 +251,7 @@ const showApiKey = ref(false);
 const inputMode = ref<'text' | 'file'>('text');
 const uploadedFile = ref<File[]>([]);
 const fileContent = ref('');
+const { createAgent, loading, error } = useCustomAgents();
 
 // Validation rules
 const rules = {
@@ -329,14 +321,11 @@ async function createBot() {
   const { valid } = await formRef.value.validate();
   if (!valid) return;
 
-  creating.value = true;
-
   try {
     const specialties = botSpecialties.value.map(s => 
       typeof s === 'string' ? s : s.title
     );
-
-    const bot: CustomBot = {
+    const payload: CustomAgentPayload = {
       name: botName.value.trim(),
       emoji: botEmoji.value.trim() || '🤖',
       prompt: finalPrompt.value.trim(),
@@ -345,34 +334,19 @@ async function createBot() {
       openaiAccount: openaiAccount.value.trim() || undefined,
       createdAt: Date.now()
     };
-
-    // Salva no localStorage
-    saveCustomBot(bot);
-
-    // Emite evento
-    emit('bot-created', bot);
-
+    const createdAgent = await createAgent(payload);
+    emit('agent-created', createdAgent);
     // Fecha modal e reseta
     closeDialog();
     resetForm();
   } catch (error) {
     console.error('Erro ao criar bot:', error);
   } finally {
-    creating.value = false;
+    // loading is managed by composable
   }
 }
 
-function saveCustomBot(bot: CustomBot) {
-  const stored = localStorage.getItem('customBots');
-  const bots: CustomBot[] = stored ? JSON.parse(stored) : [];
-  
-  // Adiciona novo bot
-  bots.push(bot);
-  
-  // Salva
-  localStorage.setItem('customBots', JSON.stringify(bots));
-  console.log('✅ Bot personalizado salvo:', bot.name);
-}
+// local persistence removed: creation is persisted via backend composable
 
 function closeDialog() {
   dialog.value = false;

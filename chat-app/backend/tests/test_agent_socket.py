@@ -30,7 +30,11 @@ async def test_process_agent_message_emits_agent_message(monkeypatch):
 
     # Monkeypatch get_agent to return a fake agent
     import bots.agents as agents_module
-    monkeypatch.setattr(agents_module, 'get_agent', lambda name, uid=None: FakeAgent())
+
+    async def fake_get_agent(name, uid=None):
+        return FakeAgent()
+
+    monkeypatch.setattr(agents_module, 'get_agent', fake_get_agent)
     monkeypatch.setattr(agents_module, 'generate_agent_suggestions', lambda agent, ctx, uid, uname, n_suggestions=3: [])
 
     # Monkeypatch DB insert collections
@@ -41,9 +45,11 @@ async def test_process_agent_message_emits_agent_message(monkeypatch):
         return Result()
     monkeypatch.setattr(agent_messages_collection, 'insert_one', fake_insert)
 
-    # Monkeypatch get_conversation_context to return empty
+    # Monkeypatch get_conversation_context to return empty (async)
     import bots.context_loader as ctxloader
-    monkeypatch.setattr(ctxloader, 'get_conversation_context', lambda *args, **kwargs: [])
+    async def fake_get_context(*_args, **_kwargs):
+        return []
+    monkeypatch.setattr(ctxloader, 'get_conversation_context', fake_get_context)
 
     # Monkeypatch sio.get_environ to return user info
     monkeypatch.setattr(socket_handlers.sio, 'get_environ', lambda sid: {'user_id': 'user123', 'user_name': 'User'})
