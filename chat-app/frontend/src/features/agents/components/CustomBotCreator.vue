@@ -267,12 +267,11 @@ const showApiKey = ref(false);
 const inputMode = ref<'text' | 'file'>('text');
 const uploadedFile = ref<File[]>([]);
 const fileContent = ref('');
-<<<<<<< HEAD
 const submitError = ref('');
 const snackbar = ref(false);
 const snackbarText = ref('');
 
-const { createAgent, loading, error } = useCustomAgents();
+const { createAgent, loading } = useCustomAgents();
 
 // Validation rules
 const rules = {
@@ -342,21 +341,13 @@ async function handleCreateBot() {
   const { valid } = await formRef.value.validate();
   if (!valid) return;
 
-<<<<<<< HEAD
-=======
   submitError.value = '';
 
->>>>>>> origin/main
   try {
     const specialties = botSpecialties.value.map((s) =>
       typeof s === 'string' ? s : s.title
     );
-<<<<<<< HEAD
     const payload: CustomAgentPayload = {
-=======
-
-    const payload: CustomBotPayload = {
->>>>>>> origin/main
       name: botName.value.trim(),
       emoji: botEmoji.value.trim() || '🤖',
       prompt: finalPrompt.value.trim(),
@@ -364,37 +355,24 @@ async function handleCreateBot() {
       openaiApiKey: openaiApiKey.value.trim(),
       openaiAccount: openaiAccount.value.trim() || undefined
     };
-<<<<<<< HEAD
     const createdAgent = await createAgent(payload);
     emit('agent-created', createdAgent);
+    snackbarText.value = `Agente ${createdAgent.name} criado!`;
+    snackbar.value = true;
     // Fecha modal e reseta
     closeDialog();
     resetForm();
-  } catch (error) {
-    console.error('Erro ao criar bot:', error);
+  } catch (err: any) {
+    console.error('Erro ao criar agente:', err);
+    submitError.value = err?.response?.data?.detail || err?.message || 'Falha ao criar agente';
   } finally {
     // loading is managed by composable
   }
 }
 
-// local persistence removed: creation is persisted via backend composable
 
-=======
 
-    const createdBot = await createBot(payload);
-    emit('bot-created', createdBot);
 
-    snackbarText.value = `Agente ${createdBot.name} criado!`;
-    snackbar.value = true;
-    closeDialog();
-    resetForm();
-  } catch (err) {
-    console.error('Erro ao criar bot:', err);
-    submitError.value = error.value || 'Falha ao criar bot';
-  }
-}
-
->>>>>>> origin/main
 function closeDialog() {
   dialog.value = false;
 }
