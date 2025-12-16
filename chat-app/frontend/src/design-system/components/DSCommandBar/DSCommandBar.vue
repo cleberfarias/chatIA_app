@@ -1,12 +1,14 @@
 <template>
   <div class="guru-commands-bar" v-if="modelValue">
+   
+      
     <div class="guru-commands-content">
-      <div class="guru-commands-header">
+      <!-- <div class="guru-commands-header">
         <v-icon size="small" color="teal-darken-3" class="mr-1">mdi-robot-happy</v-icon>
         <span class="guru-commands-title">Comandos do Guru</span>
-      </div>
+      </div> -->
 
-      <div class="chips-row">
+      <!-- <div class="chips-row">
         <v-chip
           size="small"
           color="teal-darken-1"
@@ -47,9 +49,9 @@
         >
           /contexto
         </v-chip>
-      </div>
+      </div> -->
 
-      <v-divider class="my-2"></v-divider>
+      <!-- <v-divider class="my-2"></v-divider> -->
 
       <div class="guru-commands-header mt-2">
         <v-icon size="small" color="purple-darken-2" class="mr-1">mdi-account-group</v-icon>
@@ -117,6 +119,19 @@
         >
           /agentes
         </v-chip>
+
+        <!-- dynamic agent chips -->
+        <v-chip
+          v-for="agent in props.extraChips || []"
+          :key="agent.key"
+          size="small"
+          variant="flat"
+          class="mr-2 mb-2"
+          @click="emit('open-agent', agent.key)"
+        >
+          <span class="mr-2">{{ agent.emoji || '🤖' }}</span>
+          {{ agent.title }}
+        </v-chip>
       </div>
 
       <v-btn
@@ -134,11 +149,13 @@
 <script setup lang="ts">
 const props = defineProps<{
   modelValue: boolean;
+  extraChips?: { key: string; title: string; emoji?: string }[];
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: boolean): void;
   (e: 'command', cmd: string): void;
+  (e: 'open-agent', key: string): void;
 }>();
 
 function onCommand(cmd: string) {

@@ -4,16 +4,26 @@
       <v-card-title class="bg-gradient-custom text-white">
         <div class="d-flex align-center">
           <v-icon class="mr-2">mdi-robot-excited</v-icon>
-          <span>Criar Bot Personalizado</span>
+          <span>Criar Agente Personalizado</span>
         </div>
       </v-card-title>
 
       <v-card-text class="pt-6 pb-4">
+        <v-alert
+          v-if="submitError"
+          type="error"
+          variant="tonal"
+          class="mb-4"
+          density="compact"
+        >
+          {{ submitError }}
+        </v-alert>
+
         <v-form ref="formRef" v-model="formValid">
           <!-- Nome do Bot -->
           <v-text-field
             v-model="botName"
-            label="Nome do Bot *"
+            label="Nome do Agente *"
             placeholder="Ex: Assistente de Vendas, Tutor de Matemática..."
             prepend-inner-icon="mdi-robot"
             variant="outlined"
@@ -26,7 +36,7 @@
           <!-- Emoji do Bot -->
           <v-text-field
             v-model="botEmoji"
-            label="Emoji (opcional)"
+            label="Emoji do Agente (opcional)"
             placeholder="🤖"
             prepend-inner-icon="mdi-emoticon-happy"
             variant="outlined"
@@ -163,11 +173,11 @@ COMPORTAMENTO:
             </template>
           </v-combobox>
 
-          <!-- Preview do Bot -->
+          <!-- Preview do Agente -->
           <v-card v-if="botName || botEmoji" variant="tonal" class="mt-6">
             <v-card-subtitle class="d-flex align-center">
               <v-icon size="small" class="mr-2">mdi-robot-happy</v-icon>
-              Preview do Bot
+              Preview do Agente
             </v-card-subtitle>
             <v-card-text>
               <div class="d-flex align-center">
@@ -176,7 +186,7 @@ COMPORTAMENTO:
                 </v-avatar>
                 <div>
                   <div class="text-subtitle-1 font-weight-bold">
-                    {{ botName || 'Meu Bot' }} {{ botEmoji }}
+                    {{ botName || 'Meu Agente' }} {{ botEmoji }}
                   </div>
                   <div v-if="botSpecialties.length" class="text-caption text-grey">
                     {{ botSpecialties.slice(0, 3).join(' • ') }}
@@ -201,20 +211,30 @@ COMPORTAMENTO:
         <v-btn
           color="primary"
           variant="flat"
-          :disabled="!canCreate"
+          :disabled="!canCreate || creating"
           :loading="creating"
-          @click="createBot"
+          @click="handleCreateBot"
         >
           <v-icon class="mr-2">mdi-plus-circle</v-icon>
-          Criar Bot
+          Criar Agente
         </v-btn>
       </v-card-actions>
+
+      <v-snackbar
+        v-model="snackbar"
+        color="success"
+        timeout="2500"
+        location="top"
+      >
+        {{ snackbarText }}
+      </v-snackbar>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useCustomBots, type CustomBotPayload, type CustomBotSummary } from '../../../composables/useCustomBots';
 
 // Props
 const props = defineProps<{
@@ -224,19 +244,8 @@ const props = defineProps<{
 // Emits
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
-  'bot-created': [bot: CustomBot];
+  'bot-created': [bot: CustomBotSummary];
 }>();
-
-// Types
-interface CustomBot {
-  name: string;
-  emoji: string;
-  prompt: string;
-  specialties: string[];
-  openaiApiKey: string;
-  openaiAccount?: string;
-  createdAt: number;
-}
 
 // Dialog state
 const dialog = computed({
@@ -247,7 +256,6 @@ const dialog = computed({
 // Form
 const formRef = ref();
 const formValid = ref(false);
-const creating = ref(false);
 
 // Bot data
 const botName = ref('');
@@ -260,6 +268,11 @@ const showApiKey = ref(false);
 const inputMode = ref<'text' | 'file'>('text');
 const uploadedFile = ref<File[]>([]);
 const fileContent = ref('');
+const submitError = ref('');
+const snackbar = ref(false);
+const snackbarText = ref('');
+
+const { createBot, loading: creating, error } = useCustomBots();
 
 // Validation rules
 const rules = {
@@ -323,55 +336,39 @@ function handleFileUpload() {
   reader.readAsText(file);
 }
 
-async function createBot() {
+async function handleCreateBot() {
   if (!formRef.value) return;
-  
+
   const { valid } = await formRef.value.validate();
   if (!valid) return;
 
-  creating.value = true;
+  submitError.value = '';
 
   try {
-    const specialties = botSpecialties.value.map(s => 
+    const specialties = botSpecialties.value.map((s) =>
       typeof s === 'string' ? s : s.title
     );
 
-    const bot: CustomBot = {
+    const payload: CustomBotPayload = {
       name: botName.value.trim(),
       emoji: botEmoji.value.trim() || '🤖',
       prompt: finalPrompt.value.trim(),
       specialties: specialties.slice(0, 5),
       openaiApiKey: openaiApiKey.value.trim(),
-      openaiAccount: openaiAccount.value.trim() || undefined,
-      createdAt: Date.now()
+      openaiAccount: openaiAccount.value.trim() || undefined
     };
 
-    // Salva no localStorage
-    saveCustomBot(bot);
+    const createdBot = await createBot(payload);
+    emit('bot-created', createdBot);
 
-    // Emite evento
-    emit('bot-created', bot);
-
-    // Fecha modal e reseta
+    snackbarText.value = `Agente ${createdBot.name} criado!`;
+    snackbar.value = true;
     closeDialog();
     resetForm();
-  } catch (error) {
-    console.error('Erro ao criar bot:', error);
-  } finally {
-    creating.value = false;
+  } catch (err) {
+    console.error('Erro ao criar bot:', err);
+    submitError.value = error.value || 'Falha ao criar bot';
   }
-}
-
-function saveCustomBot(bot: CustomBot) {
-  const stored = localStorage.getItem('customBots');
-  const bots: CustomBot[] = stored ? JSON.parse(stored) : [];
-  
-  // Adiciona novo bot
-  bots.push(bot);
-  
-  // Salva
-  localStorage.setItem('customBots', JSON.stringify(bots));
-  console.log('✅ Bot personalizado salvo:', bot.name);
 }
 
 function closeDialog() {
@@ -389,6 +386,8 @@ function resetForm() {
   uploadedFile.value = [];
   fileContent.value = '';
   inputMode.value = 'text';
+  submitError.value = '';
+  snackbar.value = false;
   formRef.value?.resetValidation();
 }
 

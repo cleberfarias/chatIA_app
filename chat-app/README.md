@@ -337,25 +337,25 @@ O sistema inclui **5 agentes IA** pré-configurados com personalidades e experti
 /agentes
 ```
 
-### Criando Bots Personalizados
+### Criando Agentes Personalizados
 
 1. Clique no botão roxo **+** (canto inferior direito)
 2. Preencha o formulário:
-   - **Nome**: Nome único do bot
+  - **Nome**: Nome único do agente
    - **Emoji**: Ícone representativo (opcional)
    - **OpenAI API Key**: Sua chave da OpenAI (sk-proj-...)
    - **Organization ID**: ID da organização (opcional)
    - **Prompt**: Personalidade e comportamento do bot
    - **Especialidades**: Até 5 áreas de expertise
-3. Clique em **Criar Bot**
-4. Use no painel do bot (ou abra o painel do bot e envie sua pergunta)
+3. Clique em **Criar Agente**
+4. Use no painel do agente (ou abra o painel do agente e envie sua pergunta)
 
 **Recursos:**
-- ✅ Credenciais OpenAI individuais por bot
+- ✅ Credenciais OpenAI individuais por agente
 - ✅ Upload de arquivo .txt/.md para prompts longos
 - ✅ Histórico de conversa independente (10 mensagens)
 - ✅ Comandos universais (/ajuda, /limpar, /contexto)
-- ✅ Preview ao vivo do bot
+- ✅ Preview ao vivo do agente
 
 ## 📡 API
 
