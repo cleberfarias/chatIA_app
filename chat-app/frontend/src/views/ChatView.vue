@@ -76,6 +76,8 @@
           v-if="showGuruCommands" 
           v-model="showGuruCommands" 
           @command="insertCommand" 
+          :extra-chips="agentChips"
+          @open-agent="openAgentPanel"
         />
       </Transition>
 
@@ -140,11 +142,16 @@
       @audio-recorded="handleAudioRecorded"
     />
 
-    <!-- CRIADOR DE BOT PERSONALIZADO -->
+    <!-- CRIADOR DE AGENTE PERSONALIZADO -->
     <CustomBotCreator
       v-model="showBotCreator"
-      @bot-created="handleBotCreated"
+      @agent-created="handleAgentCreated"
     />
+
+    <!-- Snackbar para criação de agente -->
+    <v-snackbar v-model="showAgentSnackbar" color="success" timeout="3000" location="top">
+      {{ agentSnackbarText }}
+    </v-snackbar>
 
     <!-- DIALOG PARA NOME DO USUÁRIO -->
     <v-dialog v-model="showNameDialog" max-width="400" persistent>
@@ -228,6 +235,7 @@ import { useScrollToBottom } from '../design-system/composables/useScrollToBotto
 import { colors } from '../design-system/tokens/index.ts';
 import { uploadAndSend } from '../composables/useUpload';
 import type { Contact } from '../stores/contacts';
+import type { CustomAgentSummary } from '../features/agents/types';
 import { DSCommandBar } from '../design-system/components/DSCommandBar';
 
 // 🆕 Props
@@ -253,6 +261,9 @@ const showVoiceRecorder = ref(false);
 const showBotCreator = ref(false);
 const showWppConnectDialog = ref(false);
 const showGuruCommands = ref(false); // 🧠 Mostra chips do Guru apenas quando clicar no botão
+const agentChips = ref<CustomAgentSummary[]>([]);
+const showAgentSnackbar = ref(false);
+const agentSnackbarText = ref('');
 const guruSessionActive = ref(false); // 🧠 Rastreia se está em sessão com Guru
 const apiBaseUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 const uploadingFile = ref(false);
@@ -587,44 +598,22 @@ function minimizeAgentPanel(key: string) {
   }
 }
 
-// 🤖 FUNÇÃO: Handler para quando um bot customizado é criado
-async function handleBotCreated(bot: { 
-  name: string; 
-  emoji: string; 
-  prompt: string; 
-  specialties: string[];
-  openaiApiKey: string;
-  openaiAccount?: string;
-}) {
+// 🤖 FUNÇÃO: Handler para quando um agente customizado é criado (recebe o resumo criado)
+function handleAgentCreated(agent: { name: string; emoji: string; key: string; specialties: string[] }) {
   try {
-    const response = await fetch(`${apiBaseUrl}/custom-bots`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({
-        name: bot.name,
-        emoji: bot.emoji,
-        prompt: bot.prompt,
-        specialties: bot.specialties,
-        openaiApiKey: bot.openaiApiKey,
-        openaiAccount: bot.openaiAccount
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Falha ao criar bot');
+    console.log('✅ Agente criado (evento):', agent);
+    // Adiciona chip do agente para facilitar abertura do painel
+    const agentKey = agent.key || (agent.name || '').toLowerCase().replace(/\s+/g, '')
+    agentChips.value = [{ key: agentKey, title: agent.name, emoji: agent.emoji }, ...agentChips.value.filter(a => a.key !== agentKey)];
+    // Abre o painel do agente recém-criado para o contato atual
+    if (agentKey) {
+      openAgentPanel(agentKey, agent.name, agent.emoji)
     }
-    
-    const data = await response.json();
-    console.log('✅ Bot criado com sucesso:', data.bot);
-    
-    // TODO: Adicionar chip dinamicamente na barra de comandos
-    // TODO: Mostrar snackbar de sucesso
+    // Mostrar snackbar de sucesso
+    agentSnackbarText.value = `Agente ${agent.name} criado com sucesso`;
+    showAgentSnackbar.value = true;
   } catch (error) {
-    console.error('❌ Erro ao criar bot customizado:', error);
-    // TODO: Mostrar snackbar de erro
+    console.error('❌ Erro no handler de agente criado:', error);
   }
 }
 
