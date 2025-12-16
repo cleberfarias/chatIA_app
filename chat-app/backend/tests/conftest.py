@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+pytest_plugins = ("pytest_asyncio",)
+
 # Ajusta sys.path para resolver imports do backend
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = ROOT / "backend"
@@ -84,6 +86,14 @@ def patch_startup(monkeypatch):
         return None
     monkeypatch.setattr(main, "start_scheduler", lambda: None)
     monkeypatch.setattr(main, "load_and_schedule_all", _noop)
+    # Evita criar índices e carregar bots customizados no Mongo real
+    import database
+    monkeypatch.setattr(database, "create_indexes", _noop)
+    # Usa coleções fake para evitar dependência de Mongo
+    monkeypatch.setattr(database, "agent_messages_collection", FakeCollection(), raising=False)
+    monkeypatch.setattr(database, "messages_collection", FakeCollection(), raising=False)
+    import bots.agents as agents_module
+    monkeypatch.setattr(agents_module, "load_custom_agents_from_db", _noop)
     yield
 
 

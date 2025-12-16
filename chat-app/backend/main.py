@@ -13,6 +13,10 @@ async def lifespan(app: FastAPI):
     from database import create_indexes
     await create_indexes()
     print("✅ Índices do MongoDB criados")
+    # Carrega bots customizados salvos
+    from bots.agents import load_custom_agents_from_db
+    await load_custom_agents_from_db()
+    print("✅ Bots customizados carregados")
     
     # Inicia scheduler e automações
     start_scheduler()

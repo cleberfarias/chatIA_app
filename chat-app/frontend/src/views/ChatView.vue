@@ -77,7 +77,7 @@
           v-model="showGuruCommands" 
           @command="insertCommand" 
           :extra-chips="agentChips"
-          @open-agent="openAgentPanel"
+          @open-agent="(key) => openAgentPanel(key)"
         />
       </Transition>
 
@@ -188,7 +188,7 @@
       v-for="(panel, index) in agentPanels.filter(p => !p.minimized)"
       :key="panel.key"
       :agent-key="panel.key"
-      :title="panel.title"
+      :title="panel.title || 'Agente'"
       :emoji="panel.emoji"
       :stack-index="index"
       :contact-id="props.contact?.id || chatStore.currentContactId || undefined"
@@ -205,7 +205,7 @@
         @click="openAgentPanel(panel.key, panel.title, panel.emoji)"
       >
         <span class="tab-emoji">{{ panel.emoji || '🤖' }}</span>
-        <span class="tab-name">{{ panel.title.split(' ')[0] }}</span>
+        <span class="tab-name">{{ (panel.title || 'Agente').split(' ')[0] }}</span>
         <button 
           @click.stop="closeAgentPanel(panel.key)" 
           class="tab-close"
@@ -235,7 +235,7 @@ import { useScrollToBottom } from '../design-system/composables/useScrollToBotto
 import { colors } from '../design-system/tokens/index.ts';
 import { uploadAndSend } from '../composables/useUpload';
 import type { Contact } from '../stores/contacts';
-import type { CustomAgentSummary } from '../features/agents/types';
+// types for agents moved to local shapes (title) — no direct import needed here
 import { DSCommandBar } from '../design-system/components/DSCommandBar';
 
 // 🆕 Props
@@ -261,7 +261,7 @@ const showVoiceRecorder = ref(false);
 const showBotCreator = ref(false);
 const showWppConnectDialog = ref(false);
 const showGuruCommands = ref(false); // 🧠 Mostra chips do Guru apenas quando clicar no botão
-const agentChips = ref<CustomAgentSummary[]>([]);
+const agentChips = ref<Array<{ key: string; title: string; emoji?: string }>>([]);
 const showAgentSnackbar = ref(false);
 const agentSnackbarText = ref('');
 const guruSessionActive = ref(false); // 🧠 Rastreia se está em sessão com Guru
@@ -273,7 +273,7 @@ const { containerRef, scrollToBottom } = useScrollToBottom();
 
 // 🆕 Estado para painéis de agente (chat-in-chat) vinculados por contactId
 // Estrutura: { contactId: [{ key, title, emoji, minimized }] }
-const agentPanelsByContact = ref<Record<string, Array<{ key: string; title: string; emoji?: string; minimized?: boolean }>>>({});
+const agentPanelsByContact = ref<Record<string, Array<{ key: string; title?: string; emoji?: string; minimized?: boolean }>>>({});
 
 // 🆕 Computed: Painéis do contato atual
 const agentPanels = computed(() => {
@@ -528,7 +528,7 @@ function insertCommand(command: string) {
 }
 
 // 🆕 FUNÇÕES: Gerenciamento de painéis de agente (vinculados por contactId)
-function openAgentPanel(key: string, title: string, emoji?: string) {
+function openAgentPanel(key: string, title?: string, emoji?: string) {
   const contactId = props.contact?.id || chatStore.currentContactId;
   
   if (!contactId) {

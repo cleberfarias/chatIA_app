@@ -1,7 +1,7 @@
 <template>
   <v-dialog v-model="dialog" max-width="700px" persistent scrollable>
     <v-card>
-      <v-card-title class="bg-gradient-custom text-white">
+          <v-card-title class="bg-gradient-custom text-white">
         <div class="d-flex align-center">
           <v-icon class="mr-2">mdi-robot-excited</v-icon>
           <span>Criar Agente Personalizado</span>
@@ -20,7 +20,7 @@
         </v-alert>
 
         <v-form ref="formRef" v-model="formValid">
-          <!-- Nome do Bot -->
+          <!-- Nome do Agente -->
           <v-text-field
             v-model="botName"
             label="Nome do Agente *"
@@ -33,7 +33,7 @@
             class="mb-4"
           />
 
-          <!-- Emoji do Bot -->
+          <!-- Emoji do Agente -->
           <v-text-field
             v-model="botEmoji"
             label="Emoji do Agente (opcional)"
@@ -41,7 +41,7 @@
             prepend-inner-icon="mdi-emoticon-happy"
             variant="outlined"
             :rules="[rules.maxLength]"
-            hint="Um emoji que representa seu bot"
+            hint="Um emoji que representa seu agente"
             persistent-hint
             class="mb-4"
             maxlength="4"
@@ -116,7 +116,7 @@ COMPORTAMENTO:
                 variant="outlined"
                 :rules="[rules.required]"
                 rows="12"
-                hint="Descreva a personalidade, expertise e comportamento do bot"
+                hint="Descreva a personalidade, expertise e comportamento do agente"
                 persistent-hint
                 auto-grow
                 counter
@@ -143,7 +143,7 @@ COMPORTAMENTO:
               <v-card v-if="fileContent" variant="outlined" class="mt-4">
                 <v-card-subtitle class="d-flex align-center">
                   <v-icon size="small" class="mr-2">mdi-eye</v-icon>
-                  Preview do Arquivo
+                    Preview do Arquivo
                 </v-card-subtitle>
                 <v-card-text>
                   <pre class="file-preview">{{ fileContent }}</pre>
@@ -211,8 +211,8 @@ COMPORTAMENTO:
         <v-btn
           color="primary"
           variant="flat"
-          :disabled="!canCreate || creating"
-          :loading="creating"
+          :disabled="!canCreate"
+          :loading="loading"
           @click="handleCreateBot"
         >
           <v-icon class="mr-2">mdi-plus-circle</v-icon>
@@ -234,7 +234,7 @@ COMPORTAMENTO:
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useCustomBots, type CustomBotPayload, type CustomBotSummary } from '../../../composables/useCustomBots';
+import { useCustomAgents, type CustomAgentPayload, type CustomAgentSummary } from '../../../composables/useCustomAgents';
 
 // Props
 const props = defineProps<{
@@ -244,9 +244,8 @@ const props = defineProps<{
 // Emits
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
-  'bot-created': [bot: CustomBotSummary];
+  'agent-created': [agent: CustomAgentSummary];
 }>();
-
 // Dialog state
 const dialog = computed({
   get: () => props.modelValue,
@@ -272,7 +271,7 @@ const submitError = ref('');
 const snackbar = ref(false);
 const snackbarText = ref('');
 
-const { createBot, loading: creating, error } = useCustomBots();
+const { createAgent, loading } = useCustomAgents();
 
 // Validation rules
 const rules = {
@@ -348,8 +347,7 @@ async function handleCreateBot() {
     const specialties = botSpecialties.value.map((s) =>
       typeof s === 'string' ? s : s.title
     );
-
-    const payload: CustomBotPayload = {
+    const payload: CustomAgentPayload = {
       name: botName.value.trim(),
       emoji: botEmoji.value.trim() || '🤖',
       prompt: finalPrompt.value.trim(),
@@ -357,19 +355,23 @@ async function handleCreateBot() {
       openaiApiKey: openaiApiKey.value.trim(),
       openaiAccount: openaiAccount.value.trim() || undefined
     };
-
-    const createdBot = await createBot(payload);
-    emit('bot-created', createdBot);
-
-    snackbarText.value = `Agente ${createdBot.name} criado!`;
+    const createdAgent = await createAgent(payload);
+    emit('agent-created', createdAgent);
+    snackbarText.value = `Agente ${createdAgent.name} criado!`;
     snackbar.value = true;
+    // Fecha modal e reseta
     closeDialog();
     resetForm();
-  } catch (err) {
-    console.error('Erro ao criar bot:', err);
-    submitError.value = error.value || 'Falha ao criar bot';
+  } catch (err: any) {
+    console.error('Erro ao criar agente:', err);
+    submitError.value = err?.response?.data?.detail || err?.message || 'Falha ao criar agente';
+  } finally {
+    // loading is managed by composable
   }
 }
+
+
+
 
 function closeDialog() {
   dialog.value = false;
