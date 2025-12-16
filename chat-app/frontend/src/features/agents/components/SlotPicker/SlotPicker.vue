@@ -78,10 +78,12 @@ async function selectDate(date: Date) {
 }
 
 // Busca slots disponíveis para a data selecionada
+import { useAuthStore } from '@/stores/auth'
+
 async function loadAvailableSlots() {
   loading.value = true
   try {
-    const token = localStorage.getItem('token')
+    const token = useAuthStore().token
     const dateStr = formatDateForAPI(selectedDate.value)
     
     const url = new URL(`${apiBaseUrl}/calendar/available-slots`)
@@ -118,20 +120,20 @@ function selectSlot(slot: TimeSlot) {
 function confirmSchedule() {
   if (!selectedSlot.value || !customerEmail.value) return
 
-  const [startTime] = selectedSlot.value.split('-')
+  const [startTime = ''] = selectedSlot.value.split('-')
   
   emit('slot-selected', {
     date: formatDateForAPI(selectedDate.value),
     time: startTime,
-    customerEmail: customerEmail.value
-    , customerPhone: props.customerPhone
+    customerEmail: customerEmail.value,
+    customerPhone: props.customerPhone
   })
 }
 
 onMounted(() => {
   // Seleciona amanhã por padrão
   if (availableDates.value.length > 0) {
-    selectDate(availableDates.value[0])
+    selectDate(availableDates.value[0]!)
   }
 })
 </script>
@@ -196,7 +198,7 @@ onMounted(() => {
           <p class="text-caption mb-2">Tente outra data ou selecione uma das opções abaixo:</p>
           <div class="fallback-chips">
             <v-chip
-              v-for="(d, idx) in availableDates.slice(0, 3)"
+              v-for="(d, _idx) in availableDates.slice(0, 3)"
               :key="d.toISOString()"
               color="secondary"
               variant="outlined"

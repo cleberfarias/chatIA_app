@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import { useAuthStore } from '@/stores/auth'
 
 interface HandoverRequest {
   id: string
@@ -61,7 +62,7 @@ const statusCounts = computed(() => {
 async function loadHandovers() {
   loading.value = true
   try {
-    const token = localStorage.getItem('token')
+    const token = useAuthStore().token
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/handovers/`, {
       headers: { Authorization: `Bearer ${token}` },
       params: {
@@ -80,13 +81,13 @@ async function loadHandovers() {
 
 async function acceptHandover(handover: HandoverRequest) {
   try {
-    const token = localStorage.getItem('token')
-    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const token = useAuthStore().token
+    const user = useAuthStore().user || { id: undefined, name: undefined, email: undefined }
     
     await axios.put(
       `${import.meta.env.VITE_API_URL}/handovers/${handover.id}/accept`,
       {
-        agent_id: user.sub,
+        agent_id: user.id,
         agent_name: user.name || user.email
       },
       { headers: { Authorization: `Bearer ${token}` } }
@@ -100,7 +101,7 @@ async function acceptHandover(handover: HandoverRequest) {
 
 async function markInProgress(handover: HandoverRequest) {
   try {
-    const token = localStorage.getItem('token')
+    const token = useAuthStore().token
     await axios.put(
       `${import.meta.env.VITE_API_URL}/handovers/${handover.id}/in-progress`,
       {},
@@ -114,7 +115,7 @@ async function markInProgress(handover: HandoverRequest) {
 
 async function resolveHandover(handover: HandoverRequest) {
   try {
-    const token = localStorage.getItem('token')
+    const token = useAuthStore().token
     await axios.put(
       `${import.meta.env.VITE_API_URL}/handovers/${handover.id}/resolve`,
       { resolution_notes: 'Resolvido pelo agente' },

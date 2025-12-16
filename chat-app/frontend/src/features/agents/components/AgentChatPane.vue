@@ -109,7 +109,7 @@ const emit = defineEmits(['close', 'minimize']);
 
 const chatStore = useChatStore();
 const input = ref('');
-const messages = ref<Array<{ author: string; text: string }>>([]);
+const messages = ref<Array<{ id?: string; author: string; text: string; timestamp?: number }>>([]);
 const suggestions = ref<Array<string>>([]);
 const intent = ref<string | null>(null);
 const entitiesState = ref<Array<{type:string; key:string; value:string; normalized?:string; valid?:boolean;}>>([]);
@@ -388,7 +388,7 @@ async function handleSlotSelected(data: { date: string; time: string; customerEm
   showSlotPicker.value = false;
   
     // Envia confirmação de agendamento para backend via agent:schedule-confirm
-    chatStore.socket.emit('agent:schedule-confirm', {
+    chatStore.socket?.emit?.('agent:schedule-confirm', {
       agentKey: props.agentKey,
       contactId: props.contactId,
       date: data.date,

@@ -9,6 +9,16 @@
       </v-card-title>
 
       <v-card-text class="pt-6 pb-4">
+        <v-alert
+          v-if="submitError"
+          type="error"
+          variant="tonal"
+          class="mb-4"
+          density="compact"
+        >
+          {{ submitError }}
+        </v-alert>
+
         <v-form ref="formRef" v-model="formValid">
           <!-- Nome do Agente -->
           <v-text-field
@@ -26,7 +36,7 @@
           <!-- Emoji do Agente -->
           <v-text-field
             v-model="botEmoji"
-            label="Emoji (opcional)"
+            label="Emoji do Agente (opcional)"
             placeholder="🤖"
             prepend-inner-icon="mdi-emoticon-happy"
             variant="outlined"
@@ -203,12 +213,21 @@ COMPORTAMENTO:
           variant="flat"
           :disabled="!canCreate"
           :loading="loading"
-          @click="createBot"
+          @click="handleCreateBot"
         >
           <v-icon class="mr-2">mdi-plus-circle</v-icon>
           Criar Agente
         </v-btn>
       </v-card-actions>
+
+      <v-snackbar
+        v-model="snackbar"
+        color="success"
+        timeout="2500"
+        location="top"
+      >
+        {{ snackbarText }}
+      </v-snackbar>
     </v-card>
   </v-dialog>
 </template>
@@ -227,9 +246,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean];
   'agent-created': [agent: CustomAgentSummary];
 }>();
-
-// Types are provided by the composable: CustomAgentPayload / CustomAgentSummary
-
 // Dialog state
 const dialog = computed({
   get: () => props.modelValue,
@@ -251,6 +267,11 @@ const showApiKey = ref(false);
 const inputMode = ref<'text' | 'file'>('text');
 const uploadedFile = ref<File[]>([]);
 const fileContent = ref('');
+<<<<<<< HEAD
+const submitError = ref('');
+const snackbar = ref(false);
+const snackbarText = ref('');
+
 const { createAgent, loading, error } = useCustomAgents();
 
 // Validation rules
@@ -315,25 +336,35 @@ function handleFileUpload() {
   reader.readAsText(file);
 }
 
-async function createBot() {
+async function handleCreateBot() {
   if (!formRef.value) return;
-  
+
   const { valid } = await formRef.value.validate();
   if (!valid) return;
 
+<<<<<<< HEAD
+=======
+  submitError.value = '';
+
+>>>>>>> origin/main
   try {
-    const specialties = botSpecialties.value.map(s => 
+    const specialties = botSpecialties.value.map((s) =>
       typeof s === 'string' ? s : s.title
     );
+<<<<<<< HEAD
     const payload: CustomAgentPayload = {
+=======
+
+    const payload: CustomBotPayload = {
+>>>>>>> origin/main
       name: botName.value.trim(),
       emoji: botEmoji.value.trim() || '🤖',
       prompt: finalPrompt.value.trim(),
       specialties: specialties.slice(0, 5),
       openaiApiKey: openaiApiKey.value.trim(),
-      openaiAccount: openaiAccount.value.trim() || undefined,
-      createdAt: Date.now()
+      openaiAccount: openaiAccount.value.trim() || undefined
     };
+<<<<<<< HEAD
     const createdAgent = await createAgent(payload);
     emit('agent-created', createdAgent);
     // Fecha modal e reseta
@@ -348,6 +379,22 @@ async function createBot() {
 
 // local persistence removed: creation is persisted via backend composable
 
+=======
+
+    const createdBot = await createBot(payload);
+    emit('bot-created', createdBot);
+
+    snackbarText.value = `Agente ${createdBot.name} criado!`;
+    snackbar.value = true;
+    closeDialog();
+    resetForm();
+  } catch (err) {
+    console.error('Erro ao criar bot:', err);
+    submitError.value = error.value || 'Falha ao criar bot';
+  }
+}
+
+>>>>>>> origin/main
 function closeDialog() {
   dialog.value = false;
 }
@@ -363,6 +410,8 @@ function resetForm() {
   uploadedFile.value = [];
   fileContent.value = '';
   inputMode.value = 'text';
+  submitError.value = '';
+  snackbar.value = false;
   formRef.value?.resetValidation();
 }
 

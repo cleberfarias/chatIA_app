@@ -70,9 +70,12 @@ async def get_agent_messages(
     from auth import get_user_id_from_token
 
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    user_id = get_user_id_from_token(token) if token else None
-    if not user_id:
+    if not token:
         raise HTTPException(status_code=401, detail="Não autenticado")
+    try:
+        user_id = get_user_id_from_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
     query = {
         "agentKey": agent_key,
