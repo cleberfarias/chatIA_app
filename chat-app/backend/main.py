@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from socket_manager import sio, create_socket_app
 from socket_handlers import register_socket_handlers
 from bots.automations import start_scheduler, load_and_schedule_all
+from middleware.security import add_security_headers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +46,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security Headers
+add_security_headers(app)
+print("✅ Security headers configurados")
 
 # Routers
 try:

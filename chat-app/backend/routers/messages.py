@@ -104,3 +104,23 @@ async def get_agent_messages(
         "messages": messages,
         "hasMore": len(docs) == limit
     }
+
+
+@router.delete("/messages/all")
+async def delete_all_messages(current_user_id: str = Depends(get_current_user_id)):
+    """Limpa todas as mensagens do banco de dados"""
+    from database import agent_messages_collection
+    
+    # Deleta mensagens normais
+    result_messages = await messages_collection.delete_many({})
+    
+    # Deleta mensagens de agentes
+    result_agents = await agent_messages_collection.delete_many({})
+    
+    return {
+        "success": True,
+        "deleted": {
+            "messages": result_messages.deleted_count,
+            "agentMessages": result_agents.deleted_count
+        }
+    }

@@ -1,11 +1,12 @@
 from typing import Optional
 from datetime import datetime, timezone
 import asyncio
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 
 from deps import get_current_user_id
 from storage import validate_upload, new_object_key, presign_put, presign_get, S3_BUCKET
+from middleware.rate_limit import check_rate_limit, upload_limiter
 from database import messages_collection
 from transcription import transcribe_from_s3
 from bots.ai_bot import is_ai_question, clean_bot_mention, ask_chatgpt
@@ -34,7 +35,10 @@ class ConfirmUploadIn(BaseModel):
 
 
 @router.post("/grant", response_model=UploadGrant)
-async def grant_upload(body: UploadRequest, _current_user_id: str = Depends(get_current_user_id)):
+async def grant_upload(body: UploadRequest, request: Request, current_user_id: str = Depends(get_current_user_id)):
+    # Rate limiting: 10 uploads por minuto por usuário
+    check_rate_limit(request, upload_limiter, identifier=current_user_id)
+    
     size_mb = max(1, body.size // (1024*1024))
     try:
         validate_upload(body.filename, body.mimetype, size_mb)

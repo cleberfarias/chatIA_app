@@ -8,9 +8,23 @@ Usamos PBKDF2-SHA256 por compatibilidade no container (evita dependência nativa
 Se preferir bcrypt, troque para schemes=["bcrypt"] e garanta versão compatível do pacote bcrypt.
 """
 PWD_CTX = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+# JWT Configuration com validação de segurança
 JWT_SECRET = os.getenv("JWT_SECRET", "your_jwt_secret_change_in_production")
 JWT_ALG = "HS256"
 ACCESS_TTL_MIN = 60
+
+# ⚠️ VALIDAÇÃO CRÍTICA: Não permite JWT_SECRET padrão em produção
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+if JWT_SECRET == "your_jwt_secret_change_in_production":
+    if ENVIRONMENT == "production":
+        raise ValueError(
+            "❌ ERRO CRÍTICO DE SEGURANÇA: JWT_SECRET não configurado!\n"
+            "Configure uma secret key segura:\n"
+            "  export JWT_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(64))')\n"
+            "ou adicione no arquivo .env"
+        )
+    print("⚠️  AVISO: Usando JWT_SECRET padrão (INSEGURO - apenas para desenvolvimento)")
 
 def hash_password(password: str) -> str:
     """Hash de senha com bcrypt"""

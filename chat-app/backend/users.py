@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from database import db
 from auth import hash_password, verify_password, create_access_token
+from middleware.rate_limit import check_rate_limit, login_limiter, register_limiter
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -21,8 +22,11 @@ class LoginIn(BaseModel):
 
 
 @router.post("/register")
-async def register(data: RegisterIn):
+async def register(data: RegisterIn, request: Request):
     """Registra novo usuário"""
+    # Rate limiting: 3 registros por hora por IP
+    check_rate_limit(request, register_limiter)
+    
     if await users.find_one({"email": data.email}):
         raise HTTPException(status_code=400, detail="Email já cadastrado")
     
@@ -39,8 +43,11 @@ async def register(data: RegisterIn):
 
 
 @router.post("/login")
-async def login(data: LoginIn):
+async def login(data: LoginIn, request: Request):
     """Autentica usuário e retorna token JWT"""
+    # Rate limiting: 5 tentativas por 5 minutos por IP
+    check_rate_limit(request, login_limiter)
+    
     user = await users.find_one({"email": data.email})
     
     if not user or not verify_password(data.password, user["password"]):

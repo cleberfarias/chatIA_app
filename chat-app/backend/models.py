@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field, ConfigDict, field_serializer, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, field_serializer, EmailStr, field_validator
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
+import re
+import html
 
 
 class AttachmentInfo(BaseModel):
@@ -13,12 +15,63 @@ class AttachmentInfo(BaseModel):
 
 
 class MessageBase(BaseModel):
-    author: str
-    text: str
+    author: str = Field(..., min_length=1, max_length=100)
+    text: str = Field(..., min_length=1, max_length=5000)
     status: Optional[str] = "sent"
     type: str = "text"  # "text" | "image" | "file"
     attachment: Optional[AttachmentInfo] = None
     contactId: Optional[str] = None  # 🆕 ID do contato da conversa
+    
+    @field_validator('text')
+    @classmethod
+    def sanitize_text(cls, v: str) -> str:
+        """
+        Sanitiza texto para prevenir XSS e injection attacks.
+        
+        - Remove tags HTML/script
+        - Escapa caracteres especiais
+        - Mantém quebras de linha e texto básico
+        """
+        if not v:
+            return v
+        
+        # Remove scripts e tags perigosas
+        v = re.sub(r'<script[^>]*>.*?</script>', '', v, flags=re.DOTALL | re.IGNORECASE)
+        v = re.sub(r'<iframe[^>]*>.*?</iframe>', '', v, flags=re.DOTALL | re.IGNORECASE)
+        v = re.sub(r'<object[^>]*>.*?</object>', '', v, flags=re.DOTALL | re.IGNORECASE)
+        v = re.sub(r'<embed[^>]*>.*?</embed>', '', v, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove todas as tags HTML (mantém o texto)
+        v = re.sub(r'<[^>]+>', '', v)
+        
+        # Escapa entidades HTML
+        v = html.escape(v, quote=False)
+        
+        return v.strip()
+    
+    @field_validator('author')
+    @classmethod
+    def sanitize_author(cls, v: str) -> str:
+        """
+        Valida nome do autor.
+        
+        - Permite letras, números, espaços e alguns caracteres especiais
+        - Remove caracteres potencialmente perigosos
+        """
+        if not v:
+            raise ValueError('Nome do autor não pode ser vazio')
+        
+        # Remove caracteres especiais perigosos
+        v = re.sub(r'[<>{}[\]\\\/]', '', v)
+        
+        # Valida comprimento
+        v = v.strip()
+        if len(v) < 1:
+            raise ValueError('Nome do autor muito curto')
+        if len(v) > 100:
+            raise ValueError('Nome do autor muito longo')
+        
+        return v
 
 
 class MessageCreate(MessageBase):

@@ -25,6 +25,21 @@ services:
       - ./mongo-init:/scripts
     entrypoint: ["bash", "/scripts/init-replica.sh"]
 
+  # Redis para Socket.IO clustering e cache
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: ./backend
@@ -35,8 +50,11 @@ services:
       - ./backend:/app
     environment:
       - DATABASE_URL=mongodb://mongo:27017/chatdb?replicaSet=rs0
+      # Redis
+      - REDIS_URL=redis://redis:6379
       # JWT Authentication
       - JWT_SECRET=${JWT_SECRET:-change_me_please_64chars_min}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
       - WA_OWNER_USER_ID=${WA_OWNER_USER_ID:-}
       # Storage (MinIO/S3)
@@ -69,6 +87,7 @@ services:
     depends_on:
       - mongo
       - minio
+      - redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 10s
@@ -141,3 +160,4 @@ volumes:
   mongo_data:
   minio_data:
   whatsapp_sessions:
+  redis_data:
