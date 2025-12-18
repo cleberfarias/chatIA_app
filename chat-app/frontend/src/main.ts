@@ -26,7 +26,6 @@ import LoginView from './views/LoginView.vue';
 
 // CRM Views
 import ContactsView from './views/crm/ContactsView.vue';
-import ConversationsView from './views/crm/ConversationsView.vue';
 import CRMView from './views/crm/CRMView.vue';
 import GroupsView from './views/crm/GroupsView.vue';
 import AnalyticsView from './views/crm/AnalyticsView.vue';

@@ -87,8 +87,9 @@ onMounted(async () => {
           to: `/bots?edit=${bot.key}`,
         }))
         
+        const item = navItems.value[botsIndex]!
         navItems.value[botsIndex] = {
-          ...navItems.value[botsIndex],
+          ...item,
           badge: agentChildren.length,
           badgeColor: 'primary',
           children: agentChildren,

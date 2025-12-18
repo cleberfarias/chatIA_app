@@ -74,7 +74,7 @@
             </v-chip>
           </template>
 
-          <template #item.actions="{ item }">
+          <template #item.actions="{ item: _item }">
             <v-btn icon="mdi-pencil" size="small" variant="text" />
             <v-btn icon="mdi-eye" size="small" variant="text" />
             <v-btn icon="mdi-delete" size="small" variant="text" color="error" />
@@ -105,7 +105,7 @@ const headers = [
   { title: 'Empresa', key: 'company', sortable: true },
   { title: 'Status', key: 'status', sortable: true },
   { title: 'Última interação', key: 'lastInteraction', sortable: true },
-  { title: 'Ações', key: 'actions', sortable: false, align: 'end' },
+  { title: 'Ações', key: 'actions', sortable: false, align: 'end' as const },
 ]
 
 // Dados mockados

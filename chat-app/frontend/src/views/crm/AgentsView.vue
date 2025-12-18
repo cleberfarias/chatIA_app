@@ -175,7 +175,7 @@ interface Agent {
 
 const router = useRouter()
 const route = useRoute()
-const { bots, loading: botsLoading, refreshBots, deleteBot } = useCustomBots()
+const { bots, refreshBots, deleteBot } = useCustomBots()
 
 // Estado
 const loading = ref(false)
@@ -230,14 +230,14 @@ const loadAgents = async () => {
 }
 
 // Ações
-const editAgent = (agent: Agent) => {
+const editAgent = (_agent: Agent) => {
   // TODO: Implementar edição de agente
   snackbarText.value = 'Edição de agente em desenvolvimento'
   snackbarColor.value = 'info'
   showSnackbar.value = true
 }
 
-const duplicateAgent = (agent: Agent) => {
+const duplicateAgent = (_agent: Agent) => {
   // TODO: Implementar duplicação de agente
   snackbarText.value = 'Duplicação de agente em desenvolvimento'
   snackbarColor.value = 'info'
@@ -280,7 +280,7 @@ const chatWithAgent = (agent: Agent) => {
   router.push(`/chat?agent=${agent.key}`)
 }
 
-const viewStats = (agent: Agent) => {
+const viewStats = (_agent: Agent) => {
   // TODO: navegar para página de estatísticas do agente
   snackbarText.value = 'Estatísticas do agente em desenvolvimento'
   snackbarColor.value = 'info'

@@ -6,7 +6,7 @@ import type { TypingInfo } from '@/design-system/types/validation'
 describe('TypingIndicator', () => {
   describe('Renderização', () => {
     it('renderiza componente com estrutura correta', () => {
-      const users: TypingInfo[] = [{ author: 'João', timestamp: Date.now() }]
+      const users: TypingInfo[] = [{ userId: '1', author: 'João', chatId: 'chat1', isTyping: true }]
       
       const wrapper = mount(TypingIndicator, {
         props: { users }
@@ -18,7 +18,7 @@ describe('TypingIndicator', () => {
     })
 
     it('exibe 3 dots animados', () => {
-      const users: TypingInfo[] = [{ author: 'Maria', timestamp: Date.now() }]
+      const users: TypingInfo[] = [{ userId: '1', author: 'Maria', chatId: 'chat1', isTyping: true }]
       
       const wrapper = mount(TypingIndicator, {
         props: { users }
@@ -29,7 +29,7 @@ describe('TypingIndicator', () => {
     })
 
     it('exibe avatar', () => {
-      const users: TypingInfo[] = [{ author: 'Pedro', timestamp: Date.now() }]
+      const users: TypingInfo[] = [{ userId: '1', author: 'Pedro', chatId: 'chat1', isTyping: true }]
       
       const wrapper = mount(TypingIndicator, {
         props: { users }
@@ -42,7 +42,7 @@ describe('TypingIndicator', () => {
 
   describe('Texto de digitação', () => {
     it('exibe nome único quando 1 usuário está digitando', () => {
-      const users: TypingInfo[] = [{ author: 'João Silva', timestamp: Date.now() }]
+      const users: TypingInfo[] = [{ userId: '1', author: 'João Silva', chatId: 'chat1', isTyping: true }]
       
       const wrapper = mount(TypingIndicator, {
         props: { users }
@@ -53,8 +53,8 @@ describe('TypingIndicator', () => {
 
     it('exibe dois nomes quando 2 usuários estão digitando', () => {
       const users: TypingInfo[] = [
-        { author: 'João', timestamp: Date.now() },
-        { author: 'Maria', timestamp: Date.now() }
+        { userId: '1', author: 'João', chatId: 'chat1', isTyping: true },
+        { userId: '2', author: 'Maria', chatId: 'chat1', isTyping: true }
       ]
       
       const wrapper = mount(TypingIndicator, {
@@ -66,9 +66,9 @@ describe('TypingIndicator', () => {
 
     it('exibe quantidade quando 3+ usuários estão digitando', () => {
       const users: TypingInfo[] = [
-        { author: 'João', timestamp: Date.now() },
-        { author: 'Maria', timestamp: Date.now() },
-        { author: 'Pedro', timestamp: Date.now() }
+        { userId: '1', author: 'João', chatId: 'chat1', isTyping: true },
+        { userId: '2', author: 'Maria', chatId: 'chat1', isTyping: true },
+        { userId: '3', author: 'Pedro', chatId: 'chat1', isTyping: true }
       ]
       
       const wrapper = mount(TypingIndicator, {
@@ -89,7 +89,7 @@ describe('TypingIndicator', () => {
     })
 
     it('usa fallback quando autor não está definido', () => {
-      const users: TypingInfo[] = [{ author: '', timestamp: Date.now() }]
+      const users: TypingInfo[] = [{ userId: '1', author: '', chatId: 'chat1', isTyping: true }]
       
       const wrapper = mount(TypingIndicator, {
         props: { users }
@@ -101,7 +101,7 @@ describe('TypingIndicator', () => {
 
   describe('Props reativas', () => {
     it('atualiza texto quando usuários mudam', async () => {
-      const users: TypingInfo[] = [{ author: 'João', timestamp: Date.now() }]
+      const users: TypingInfo[] = [{ userId: '1', author: 'João', chatId: 'chat1', isTyping: true }]
       
       const wrapper = mount(TypingIndicator, {
         props: { users }
@@ -111,8 +111,8 @@ describe('TypingIndicator', () => {
 
       await wrapper.setProps({
         users: [
-          { author: 'João', timestamp: Date.now() },
-          { author: 'Maria', timestamp: Date.now() }
+          { userId: '1', author: 'João', chatId: 'chat1', isTyping: true },
+          { userId: '2', author: 'Maria', chatId: 'chat1', isTyping: true }
         ]
       })
 
@@ -121,9 +121,9 @@ describe('TypingIndicator', () => {
 
     it('atualiza de múltiplos para um único usuário', async () => {
       const users: TypingInfo[] = [
-        { author: 'João', timestamp: Date.now() },
-        { author: 'Maria', timestamp: Date.now() },
-        { author: 'Pedro', timestamp: Date.now() }
+        { userId: '1', author: 'João', chatId: 'chat1', isTyping: true },
+        { userId: '2', author: 'Maria', chatId: 'chat1', isTyping: true },
+        { userId: '3', author: 'Pedro', chatId: 'chat1', isTyping: true }
       ]
       
       const wrapper = mount(TypingIndicator, {
@@ -133,7 +133,7 @@ describe('TypingIndicator', () => {
       expect(wrapper.find('.typing-text').text()).toBe('3 pessoas estão digitando')
 
       await wrapper.setProps({
-        users: [{ author: 'Maria', timestamp: Date.now() }]
+        users: [{ userId: '2', author: 'Maria', chatId: 'chat1', isTyping: true }]
       })
 
       expect(wrapper.find('.typing-text').text()).toBe('Maria está digitando')
@@ -143,7 +143,7 @@ describe('TypingIndicator', () => {
   describe('Casos extremos', () => {
     it('lida com nomes muito longos', () => {
       const users: TypingInfo[] = [
-        { author: 'João Pedro da Silva Santos Junior', timestamp: Date.now() }
+        { userId: '1', author: 'João Pedro da Silva Santos Junior', chatId: 'chat1', isTyping: true }
       ]
       
       const wrapper = mount(TypingIndicator, {
@@ -155,7 +155,7 @@ describe('TypingIndicator', () => {
 
     it('lida com caracteres especiais nos nomes', () => {
       const users: TypingInfo[] = [
-        { author: 'José María', timestamp: Date.now() }
+        { userId: '1', author: 'José María', chatId: 'chat1', isTyping: true }
       ]
       
       const wrapper = mount(TypingIndicator, {
@@ -167,8 +167,10 @@ describe('TypingIndicator', () => {
 
     it('lida com muitos usuários (10+)', () => {
       const users: TypingInfo[] = Array.from({ length: 15 }, (_, i) => ({
+        userId: `${i + 1}`,
         author: `User ${i + 1}`,
-        timestamp: Date.now()
+        chatId: 'chat1',
+        isTyping: true
       }))
       
       const wrapper = mount(TypingIndicator, {

@@ -17,7 +17,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {
@@ -38,7 +38,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {
@@ -60,7 +60,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {
@@ -100,7 +100,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {
@@ -119,7 +119,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {
@@ -244,7 +244,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {
@@ -270,7 +270,7 @@ describe('DSNavBar', () => {
       wrapper = mount(DSNavBar, {
         props: {
           items: [
-            { icon: 'mdi-chat', title: 'Chat', to: '/chat' }
+            { id: 'chat', icon: 'mdi-chat', title: 'Chat', to: '/chat' }
           ]
         },
         global: {

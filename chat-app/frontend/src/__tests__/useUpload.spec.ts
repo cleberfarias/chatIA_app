@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { requestGrant, confirmUpload, uploadAndSend, putWithProgress } from '@/composables/useUpload'
+import { requestGrant, confirmUpload, uploadAndSend } from '@/composables/useUpload'
 
 // Mock global fetch
 global.fetch = vi.fn()

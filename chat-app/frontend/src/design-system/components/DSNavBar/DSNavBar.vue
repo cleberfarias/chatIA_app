@@ -138,10 +138,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useDisplay, useTheme } from 'vuetify'
-import type { DSNavBarProps, NavItem } from './types'
+import { useDisplay } from 'vuetify'
+import { useAuthStore } from '@/stores/auth'
+import type { DSNavBarProps } from './types'
 
 const props = withDefaults(defineProps<DSNavBarProps>(), {
   showHeader: true,
@@ -150,7 +151,6 @@ const props = withDefaults(defineProps<DSNavBarProps>(), {
 
 const router = useRouter()
 const { mobile, mdAndUp } = useDisplay()
-const theme = useTheme()
 
 // Estado do drawer
 const drawer = ref(true)
@@ -167,18 +167,25 @@ const mainItems = computed(() => {
 })
 
 // Logout handler
-const handleLogout = () => {
-  // Limpa token do localStorage
-  localStorage.removeItem('token')
-  localStorage.removeItem('userId')
-  
-  // Redireciona para login
-  router.push('/login')
-  
-  // Recarrega a página para limpar estados
-  setTimeout(() => {
-    window.location.reload()
-  }, 100)
+const handleLogout = async () => {
+  // Limpa estado de autenticação (store + storage)
+  try {
+    const auth = useAuthStore()
+    auth.logout()
+  } catch (e) {
+    // fallback: remove chaves diretamente
+    localStorage.removeItem('token')
+    localStorage.removeItem('userId')
+  }
+
+  // Redireciona para login sem forçar reload
+  // Usamos replace para não deixar histórico de sessão
+  try {
+    await router.replace('/login')
+  } catch {
+    // Fallback para navegação global se router falhar
+    window.location.href = '/login'
+  }
 }
 
 // Sincroniza item selecionado com rota atual

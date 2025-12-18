@@ -25,6 +25,7 @@ export default defineConfig({
         classNameStrategy: 'non-scoped'
       }
     },
+    types: ['./src/__tests__/types.d.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

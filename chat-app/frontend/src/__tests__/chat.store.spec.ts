@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useChatStore } from '@/stores/chat'
-import { useAuthStore } from '@/stores/auth'
 import type { Message, TypingInfo } from '@/design-system/types/validation'
 
 // Mock do Socket.IO
@@ -224,6 +223,7 @@ describe('ChatStore', () => {
         author: 'Maria',
         timestamp: Date.now(),
         status: 'sent',
+        type: 'text'
       }
 
       await newMessageListener?.(incomingMessage)
@@ -245,6 +245,7 @@ describe('ChatStore', () => {
         author: 'Advogado Virtual',
         timestamp: Date.now(),
         status: 'sent',
+        type: 'text'
       }
 
       await newMessageListener?.(agentMessage)
@@ -292,6 +293,7 @@ describe('ChatStore', () => {
         author: 'João',
         timestamp: Date.now(),
         status: 'sent',
+        type: 'text'
       })
 
       const deliveredListener = mockSocket.on.mock.calls.find(
@@ -315,6 +317,7 @@ describe('ChatStore', () => {
           author: 'João',
           timestamp: Date.now(),
           status: 'delivered',
+          type: 'text'
         },
         {
           id: 'msg-2',
@@ -322,6 +325,7 @@ describe('ChatStore', () => {
           author: 'João',
           timestamp: Date.now(),
           status: 'delivered',
+          type: 'text'
         }
       )
 
@@ -346,8 +350,8 @@ describe('ChatStore', () => {
       const typingData: TypingInfo = {
         userId: 'user-123',
         author: 'Maria',
-        isTyping: true,
-        timestamp: Date.now(),
+        chatId: 'chat1',
+        isTyping: true
       }
 
       typingListener?.(typingData)
@@ -363,8 +367,8 @@ describe('ChatStore', () => {
       chat.isTyping['user-123'] = {
         userId: 'user-123',
         author: 'Maria',
-        isTyping: true,
-        timestamp: Date.now(),
+        chatId: 'chat1',
+        isTyping: true
       }
 
       const typingListener = mockSocket.on.mock.calls.find(

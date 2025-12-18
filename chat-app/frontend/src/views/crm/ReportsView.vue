@@ -111,7 +111,7 @@
           </v-chip>
         </template>
 
-        <template #item.actions="{ item }">
+        <template #item.actions>
           <v-btn icon="mdi-download" size="small" variant="text" color="primary" />
           <v-btn icon="mdi-share-variant" size="small" variant="text" />
           <v-btn icon="mdi-delete" size="small" variant="text" color="error" />
@@ -203,7 +203,7 @@ const headers = [
   { title: 'Período', key: 'period', sortable: true },
   { title: 'Gerado em', key: 'createdAt', sortable: true },
   { title: 'Status', key: 'status', sortable: true },
-  { title: 'Ações', key: 'actions', sortable: false, align: 'end' },
+  { title: 'Ações', key: 'actions', sortable: false, align: 'end' as const },
 ]
 
 const recentReports = ref([

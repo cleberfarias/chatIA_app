@@ -1,7 +1,10 @@
+/// <reference types="vitest/globals" />
+
 import { config } from '@vue/test-utils'
 import { vi } from 'vitest'
 
 // Mock global objects
+const global = globalThis as any
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),

@@ -20,15 +20,5 @@ export default defineConfig({
         additionalData: '@use "@/design-system/styles/mixins" as mixins;\n'
       }
     }
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    css: {
-      modules: {
-        classNameStrategy: 'non-scoped'
-      }
-    },
-    setupFiles: ['./src/__tests__/setup.ts']
   }
 })
